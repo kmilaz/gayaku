@@ -9,6 +9,7 @@ import '../widgets/quick_actions.dart';
 import '../widgets/recently_added.dart';
 import '../widgets/todays_look_card.dart';
 import 'add_item_stub.dart';
+import 'weekly_planner.dart';
 
 /// Static home/dashboard: greeting, Today's Look, search, quick actions,
 /// recently added, and a floating pill bottom nav.
@@ -24,9 +25,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onNavTap(int index) {
     if (index == 2) {
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: (_) => const AddItemStub()));
+      Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => const AddItemStub()));
+      return;
+    }
+    if (index == 3) {
+      Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => const WeeklyPlanner()));
       return;
     }
     setState(() => _navIndex = index);
@@ -69,10 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-              child: HomeBottomNav(
-                currentIndex: _navIndex,
-                onTap: _onNavTap,
-              ),
+              child: HomeBottomNav(currentIndex: _navIndex, onTap: _onNavTap),
             ),
           ],
         ),

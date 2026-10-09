@@ -9,6 +9,7 @@ import '../widgets/quick_actions.dart';
 import '../widgets/recently_added.dart';
 import '../widgets/todays_look_card.dart';
 import 'add_item_stub.dart';
+import 'wardrobe_screen.dart';
 
 /// Static home/dashboard: greeting, Today's Look, search, quick actions,
 /// recently added, and a floating pill bottom nav.
@@ -23,6 +24,12 @@ class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
 
   void _onNavTap(int index) {
+    if (index == 1) {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const WardrobeScreen()));
+      return;
+    }
     if (index == 2) {
       Navigator.of(
         context,

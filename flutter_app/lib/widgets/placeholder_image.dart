@@ -41,3 +41,10 @@ void showComingSoon(BuildContext context, String label) {
     context,
   ).showSnackBar(SnackBar(content: Text('$label coming soon')));
 }
+
+/// Plain transient message — validation and other real (non-stub) feedback.
+void showNote(BuildContext context, String message) {
+  ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(message)));
+}

@@ -6,7 +6,9 @@ import 'placeholder_image.dart';
 
 /// Two shortcut cards for destinations not yet built.
 class QuickActions extends StatelessWidget {
-  const QuickActions({super.key});
+  const QuickActions({super.key, this.onFavoriteTap});
+
+  final VoidCallback? onFavoriteTap;
 
   @override
   Widget build(BuildContext context) {
@@ -23,11 +25,12 @@ class QuickActions extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Row(
-          children: const [
+          children: [
             Expanded(
               child: _QuickActionCard(
                 label: 'Your Favorite',
                 icon: Icons.favorite_outline,
+                onTap: onFavoriteTap,
               ),
             ),
             SizedBox(width: 12),
@@ -45,15 +48,20 @@ class QuickActions extends StatelessWidget {
 }
 
 class _QuickActionCard extends StatelessWidget {
-  const _QuickActionCard({required this.label, required this.icon});
+  const _QuickActionCard({
+    required this.label,
+    required this.icon,
+    this.onTap,
+  });
 
   final String label;
   final IconData icon;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => showComingSoon(context, label),
+      onTap: onTap ?? () => showComingSoon(context, label),
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: const BoxDecoration(

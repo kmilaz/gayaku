@@ -4,10 +4,29 @@ import 'package:google_fonts/google_fonts.dart';
 /// Shared color constants for the Gayaku home screen.
 abstract final class AppColors {
   static const cream = Color(0xFFFFFDF0);
+  static const warmBackground = Color(0xFFFAF7EE);
   static const beige = Color(0xFFF7F4EB);
+  static const imageSurface = Color(0xFFF3EEE2);
+  static const scannerSurface = Color(0xFFE2E0DD);
+  static const accentSurface = Color(0xFFFFF3E2);
+  static const white = Color(0xFFFFFFFF);
   static const tan = Color(0xFFD3A277);
   static const espresso = Color(0xFF3E2F25);
   static const taupe = Color(0xFFA89C8D);
+}
+
+abstract final class AppDecorations {
+  static const cardShadow = BoxShadow(
+    color: Color(0x143E2F25),
+    blurRadius: 18,
+    offset: Offset(0, 8),
+  );
+
+  static const panelShadow = BoxShadow(
+    color: Color(0x123E2F25),
+    blurRadius: 16,
+    offset: Offset(0, 7),
+  );
 }
 
 /// App [ThemeData]: Playfair Display for display text, Inter for body.

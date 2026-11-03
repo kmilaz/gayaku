@@ -335,7 +335,10 @@ def main(argv: list[str] | None = None) -> int:
             )
 
         (args.out / "data.yaml").write_text(
-            "path: .\n"
+            "# Written by fashionpedia_to_yolo.py. `path` is absolute because Ultralytics\n"
+            "# resolves a relative one against its own datasets_dir setting, not against this\n"
+            "# file; re-run the converter if the tree moves.\n"
+            f"path: {args.out.resolve().as_posix()}\n"
             "train: images/train\n"
             "val: images/val\n"
             "test: images/test\n"

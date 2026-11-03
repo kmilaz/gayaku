@@ -246,8 +246,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dataset-info",
         type=Path,
-        default=DEFAULT_HF_DIR / "dataset_infos.json",
-        help="the HuggingFace metadata file that maps category integers to names",
+        default=None,
+        help="the HuggingFace metadata file that maps category integers to names "
+        "(default: <hf-dir>/dataset_infos.json)",
     )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--limit-per-split", type=int, default=0, help="smoke run: cap rows per split")
@@ -257,6 +258,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--min-box-px", type=float, default=8.0, help="drop boxes thinner than this")
     parser.add_argument("--force", action="store_true", help="rebuild the output tree")
     args = parser.parse_args(argv)
+    if args.dataset_info is None:
+        # Default to the metadata beside the shards. A Kaggle run downloads both into
+        # /kaggle/temp, while the repository default only exists on a developer machine --
+        # reading the wrong path there failed with "missing" for a file that was present.
+        args.dataset_info = args.hf_dir / "dataset_infos.json"
 
     try:
         parquet = sorted((args.hf_dir / "data").glob("*.parquet"))

@@ -29,23 +29,25 @@ yang dilihat model sama dengan bentuk saat latihan (ADR-0005).
 | Keputusan | Alasan | Berkas |
 |---|---|---|
 | Inferensi di perangkat, bukan server | demo tidak bergantung jaringan; tidak ada citra yang diunggah | `docs/adr/0001` |
-| Hanya model berlisensi permisif (Apache/MIT/BSD) | bobot YOLO Ultralytics = AGPL-3.0; SegFormer-clothes = non-komersial NVIDIA; RMBG-2.0 = CC BY-NC; `isnet-general-use` bobotnya tidak pernah dilisensikan (`xuebinqin/DIS#150`) | `docs/adr/0002` |
-| Matting `u2netp`, klasifikasi dilatih sendiri | satu-satunya kombinasi yang lolos kebijakan lisensi dan tetap kecil (10,7 MB) | `docs/adr/0002`, `0005` |
-| Satu pakaian per foto, tanpa detektor objek | menu latar belakang di `design/scanning_page.png` memperlihatkan satu pakaian; detektor hanya menambah langkah | `docs/adr/0005` |
+| Model dipilih dengan mata terbuka soal lisensi | matting `u2netp` Apache-2.0; pengklasifikasi YOLOv8-cls Ultralytics berlisensi AGPL-3.0 dan dipakai karena tidak ada alternatif permisif yang setara (`SegFormer-clothes` non-komersial NVIDIA, `RMBG-2.0` CC BY-NC, bobot `isnet-general-use` tidak pernah dilisensikan, `xuebinqin/DIS#150`). Konsekuensinya dicatat di ADR-0006 dan ADR-0007: artefak perkuliahan, tidak dijual, dan repo belum punya berkas `LICENSE` | `docs/adr/0002`, `0006`, `0007` |
+| Matting `u2netp`, klasifikasi dilatih sendiri | model matting pra-latih Apache-2.0 dengan bobot 4,58 MB; pengklasifikasi hasil latihan sendiri 6,13 MB, total 10,7 MB | `docs/adr/0002`, `0005` |
+| Satu pakaian per foto di versi yang berjalan, detektor masuk cakupan | matting U-2-Net menggabungkan semua pakaian dalam satu foto jadi satu siluet, jadi versi pertama membatasi satu pakaian per foto; ADR-0009 membuka detektor sebagai tahap kedua yang sedang dilatih, kontrak UI-nya `docs/multi-item-scan.md` | `docs/adr/0005`, `0009`, `0010` |
 | Wardrobe disimpan di SQLite dengan id | sebelumnya item dirujuk lewat nama, sehingga mengganti nama menghapus isi kombinasi | `docs/adr/0004` |
 
 Sebutkan juga apa yang **diubah dari proposal**: proposal menulis MediaPipe +
-YOLOv8. MediaPipe ImageSegmenter belum punya binding Flutter (issue #48 masih
-terbuka sejak 2024), dan bobot YOLOv8 fashion yang paling mudah didapat berlisensi
-AGPL-3.0. Bentuk pipeline-nya dipertahankan, modelnya diganti dengan yang boleh
-dipakai.
+YOLOv8. MediaPipe ImageSegmenter masih belum punya binding Flutter (issue #48
+terbuka sejak 2024), jadi segmentasinya tetap U-2-Net small. Untuk klasifikasi
+kami justru memakai YOLOv8-cls yang dilatih sendiri: bobotnya AGPL-3.0, dan itu
+diterima sadar sebagai artefak perkuliahan yang tidak dijual (ADR-0006). Detektor
+YOLOv8 untuk beberapa pakaian dalam satu foto sedang dilatih (ADR-0009).
 
 ## 4. Data
 
 | Sumber | Isi | Status |
 |---|---|---|
 | `alexeygrigorev/clothing-dataset-small` (CC0-1.0) | 3.068 / 341 / 372 foto, 10 kelas | dipakai sekarang (model *bootstrap*) |
-| Kaggle *Fashion Product Images* | 41.369 dari 44.424 baris masuk ke 80 label terpilih | target akhir (ADR-0003) |
+| `Clothes_Dataset` + CC0, digabung `merge_datasets.py` | 11.281 foto jadi 9.728 unik, 18 kelas; split 7.779 / 957 / 992 | dilatih, belum dipasang di aplikasi (ADR-0008) |
+| Kaggle *Fashion Product Images* | 41.369 dari 44.424 baris masuk ke 80 label terpilih | jalur cadangan, bukan target lagi (ADR-0010) |
 
 Catatan lisensi yang harus Anda sampaikan lebih dulu: label MIT pada katalog
 Kaggle adalah klaim pengunggah atas **label**, bukan atas fotonya (foto katalog
@@ -70,12 +72,14 @@ kalau tidak, muncul pesan kesalahan, bukan tebakan label yang salah satu per sat
 |---|---|---|
 | Akurasi validasi | 90,9% | `ml_workspace/bootstrap/artifacts/report.md` |
 | Akurasi test (held-out) | 91,9% | idem |
-| Kesesuaian TFLite vs PyTorch | 179/179 gambar, argmax sama | idem |
+| Model 18 kelas (belum dipasang): top-1 / top-5 test | 81,55% / 98,08% | `ml_workspace/yolo/artifacts/report.md` |
+| Model 18 kelas (belum dipasang): macro-F1 test | 0,7968 | idem, tabel per kelas di `per_class_accuracy_test.csv` |
+| Kesesuaian TFLite vs PyTorch | 179/179 gambar, argmax sama | `ml_workspace/bootstrap/artifacts/report.md` |
 | Paritas ONNX vs PyTorch | selisih maks 2,68e-7 | idem |
 | Ukuran model di APK | 6,13 MB + 4,58 MB | `flutter_app/assets/models/LICENSES.md` |
 | Sapuan 16 foto aset aplikasi | lihat tabelnya | `ml_workspace/artifacts/asset_sweep.md` |
 | Uji di perangkat (emulator) | 3 Category berbeda, Cutout bersih | idem |
-| Uji otomatis | 54 test lulus; `flutter analyze` tanpa error (3 info deprecation lama) | `flutter_app/test/` |
+| Uji otomatis | 62 test lulus; `flutter analyze lib test` tanpa issue | `flutter_app/test/` |
 
 Angka di perangkat, dari uji nyata: kemeja → **Tops / Kemeja** 100%, sepatu
 sneakers → **Shoes / Sepatu** 100%, celana jeans → **Bottoms / Celana Panjang**
@@ -129,7 +133,7 @@ Sampaikan sebelum ditanya:
 
 ## 10. Langkah berikutnya
 
-1. Latih dengan katalog Kaggle → kelas aksesori + pemisahan jeans/trousers.
+1. Selesaikan detektor (Fashionpedia) lalu pasang pengklasifikasi 18 kelas sebagai tahap kedua (ADR-0009, ADR-0010).
 2. Ambang keyakinan atau penolakan "bukan pakaian".
 3. Category `Dress` untuk pakaian satu potong.
 4. Baru setelah itu modul rekomendasi (bobot skor, cuaca, preferensi gaya).
@@ -138,18 +142,21 @@ Sampaikan sebelum ditanya:
 
 | Pertanyaan | Jawaban singkat |
 |---|---|
-| Kenapa tidak YOLOv8/MediaPipe seperti proposal? | lisensi dan belum ada binding Flutter; ADR-0002 mencatat alternatif yang ditolak |
+| Kenapa tidak MediaPipe seperti proposal? | ImageSegmenter belum ada binding Flutter; ADR-0002 mencatat alternatif yang ditolak, ADR-0006 alasan memilih YOLOv8-cls untuk klasifikasi |
 | Ini ML asli atau aturan? | pengklasifikasi dilatih sendiri, matting pra-latih, K-Means algoritma klasik |
 | Butuh internet? | tidak; manifes rilis tanpa izin INTERNET |
 | Berapa ukuran dan kecepatannya? | 10,7 MB model; latensi belum diukur — sebutkan apa adanya |
 | Bagaimana dievaluasi? | split held-out + confusion matrix + sapuan 16 foto aset + uji di perangkat |
-| Kenapa aksesori salah? | daftar kelas model bootstrap belum memuatnya; katalog menambahkannya |
+| Kenapa aksesori salah? | 18 kelas hasil gabungan masih belum memuat tas/jam/kalung; katalog Kaggle memuatnya, tapi jalurnya kini cadangan (ADR-0010), jadi ini bahan keputusan kelas berikutnya, bukan janji edisi ini |
 | Kenapa gaun jadi Tops? | hanya ada lima Category (CONTEXT.md); menambah Category adalah keputusan produk |
-| Bisakah pakai banyak pakaian dalam satu foto? | belum — model matting akan menggabungkan semuanya jadi satu siluet |
+| Bisakah pakai banyak pakaian dalam satu foto? | belum rilis — matting masih menggabungkan semuanya jadi satu siluet; detektornya sedang dilatih (ADR-0009), kontrak UI-nya `docs/multi-item-scan.md` |
 
 ## Berkas yang bisa ditunjukkan
 
-- `docs/adr/0001`–`0005` — catatan keputusan beserta alternatif yang ditolak.
+- `docs/adr/0001`–`0010` — catatan keputusan beserta alternatif yang ditolak.
+- `docs/multi-item-scan.md` — kontrak pemindaian banyak pakaian per foto.
+- `ml_workspace/yolo/artifacts/report.md` — akurasi per kelas dan confusion matrix
+  model 18 kelas, beserta kompromi labelnya (`merged_dataset.json`).
 - `ml_workspace/bootstrap/artifacts/report.md` — akurasi, confusion matrix,
   riwayat epoch, audit konversi.
 - `ml_workspace/artifacts/asset_sweep.md` — perilaku model pada foto milik

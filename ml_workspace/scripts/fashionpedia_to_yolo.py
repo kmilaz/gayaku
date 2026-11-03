@@ -195,6 +195,7 @@ def convert_split(
     test_count: int,
     seed: int,
     min_px: float,
+    skip_existing: bool = False,
 ) -> dict:
     """Write one split's photographs and labels; returns its counters."""
     label_dir = out / "labels" / split
@@ -205,6 +206,7 @@ def convert_split(
     stats = {
         "rows_seen": 0,
         "images_written": 0,
+        "images_reused": 0,
         "boxes_written": 0,
         "dropped_parts": 0,
         "dropped_tiny": 0,
@@ -228,8 +230,20 @@ def convert_split(
             stats["images_without_items"] += 1
             continue
         stem = f"{split}_{row['image_id']}"
-        decode_image(row["image"]).convert("RGB").save(image_dir / f"{stem}.jpg", "JPEG", quality=92)
-        (label_dir / f"{stem}.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        image_path = image_dir / f"{stem}.jpg"
+        label_path = label_dir / f"{stem}.txt"
+        if skip_existing and image_path.is_file() and label_path.is_file():
+            # Counters are rebuilt from the label on disk, not from the row, so a resumed run
+            # reports the tree as it stands. Dropped-box counters still describe every row,
+            # because `yolo_lines` above has already run.
+            reused = [line for line in label_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+            stats["images_reused"] += 1
+            stats["boxes_written"] += len(reused)
+            for line in reused:
+                stats["per_category"][CATEGORIES[int(line.split()[0])]] += 1
+            continue
+        decode_image(row["image"]).convert("RGB").save(image_path, "JPEG", quality=92)
+        label_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         stats["images_written"] += 1
         stats["boxes_written"] += len(lines)
         for line in lines:
@@ -257,6 +271,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=20261102)
     parser.add_argument("--min-box-px", type=float, default=8.0, help="drop boxes thinner than this")
     parser.add_argument("--force", action="store_true", help="rebuild the output tree")
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="reuse photographs already written to --out; unsafe to combine with a different --min-box-px",
+    )
     args = parser.parse_args(argv)
     if args.dataset_info is None:
         # Default to the metadata beside the shards. A Kaggle run downloads both into
@@ -312,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"converting {split} ({len(rows)} rows)")
             results[split] = convert_split(
                 split, rows, args.out, args.limit_per_split, args.test_from_train, args.seed,
-                args.min_box_px,
+                args.min_box_px, args.skip_existing,
             )
 
         (args.out / "data.yaml").write_text(
@@ -336,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
                 "test_from_train": args.test_from_train,
                 "min_box_px": args.min_box_px,
                 "limit_per_split": args.limit_per_split,
+                "skip_existing": args.skip_existing,
             },
             "splits": results,
         }
@@ -347,8 +367,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{'split':<12}{'images':>8}{'boxes':>9}  per Category")
         for split, stats in results.items():
             print(
-                f"{split:<12}{stats['images_written']:>8}{stats['boxes_written']:>9}  {stats['per_category']}"
+                f"{split:<12}{stats['images_written'] + stats['images_reused']:>8}"
+                f"{stats['boxes_written']:>9}  {stats['per_category']}"
             )
+        reused = {split: stats["images_reused"] for split, stats in results.items()}
+        if any(reused.values()):
+            print(f"reused from a previous run (not re-encoded): {reused}")
         dropped = {split: stats["dropped_parts"] for split, stats in results.items()}
         print(f"part boxes dropped: {dropped}")
         empty = {split: stats["images_without_items"] for split, stats in results.items()}

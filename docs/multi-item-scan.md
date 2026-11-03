@@ -7,8 +7,9 @@ built separately without drifting.
 
 Decided by ADR-0009 (detection is in scope) and ADR-0010 (the 18-class classifier ships as
 the second stage). Numbers marked **pending** come from the detector run and are recorded in
-`ml_workspace/yolo/artifacts/detector_report.md` when it finishes; nothing here may be filled
-in by guesswork.
+`ml_workspace/yolo/artifacts/detector/report.md` when it finishes — the detector's own
+`report.md`, kept in that subfolder so it does not overwrite the classifier's. Nothing here
+may be filled in by guesswork.
 
 ## Pipeline
 

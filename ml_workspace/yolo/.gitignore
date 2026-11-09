@@ -10,3 +10,4 @@ artifacts/*.zip
 
 __pycache__/
 .venv*/
+artifacts/detector/*.tflite

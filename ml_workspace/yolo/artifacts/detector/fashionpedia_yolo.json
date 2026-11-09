@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "source": "detection-datasets/fashionpedia (HuggingFace mirror of the ECCV 2020 release)",
+  "annotation_licence": "CC BY 4.0",
+  "note": "photographs keep the terms of the sites they came from; see docs/adr/0009",
+  "categories": [
+    "Tops",
+    "Bottoms",
+    "Outerwear",
+    "Shoes",
+    "Accessories"
+  ],
+  "mapping": {
+    "bag, wallet": "Accessories",
+    "belt": "Accessories",
+    "cape": "Outerwear",
+    "cardigan": "Outerwear",
+    "coat": "Outerwear",
+    "dress": "Tops",
+    "glasses": "Accessories",
+    "glove": "Accessories",
+    "hat": "Accessories",
+    "headband, head covering, hair accessory": "Accessories",
+    "jacket": "Outerwear",
+    "jumpsuit": "Tops",
+    "leg warmer": "Accessories",
+    "pants": "Bottoms",
+    "scarf": "Accessories",
+    "shirt, blouse": "Tops",
+    "shoe": "Shoes",
+    "shorts": "Bottoms",
+    "skirt": "Bottoms",
+    "sock": "Accessories",
+    "sweater": "Outerwear",
+    "tie": "Accessories",
+    "tights, stockings": "Accessories",
+    "top, t-shirt, sweatshirt": "Tops",
+    "umbrella": "Accessories",
+    "vest": "Outerwear",
+    "watch": "Accessories"
+  },
+  "dropped_part_categories": [
+    "applique",
+    "bead",
+    "bow",
+    "buckle",
+    "collar",
+    "epaulette",
+    "flower",
+    "fringe",
+    "hood",
+    "lapel",
+    "neckline",
+    "pocket",
+    "ribbon",
+    "rivet",
+    "ruffle",
+    "sequin",
+    "sleeve",
+    "tassel",
+    "zipper"
+  ],
+  "options": {
+    "seed": 20261102,
+    "test_from_train": 2000,
+    "min_box_px": 8.0,
+    "limit_per_split": 0,
+    "skip_existing": false,
+    "max_boxes_per_category": 2000
+  },
+  "splits": {
+    "train": {
+      "rows_seen": 43623,
+      "images_written": 4030,
+      "images_reused": 0,
+      "boxes_written": 10000,
+      "dropped_parts": 163007,
+      "dropped_tiny": 1002,
+      "dropped_invalid": 0,
+      "images_without_items": 1,
+      "images_dropped_by_cap": 39592,
+      "capped_boxes_dropped": 145055,
+      "per_category": {
+        "Accessories": 2000,
+        "Bottoms": 2000,
+        "Outerwear": 2000,
+        "Shoes": 2000,
+        "Tops": 2000
+      }
+    },
+    "val": {
+      "rows_seen": 1158,
+      "images_written": 1158,
+      "images_reused": 0,
+      "boxes_written": 4665,
+      "dropped_parts": 4093,
+      "dropped_tiny": 23,
+      "dropped_invalid": 0,
+      "images_without_items": 0,
+      "images_dropped_by_cap": 0,
+      "capped_boxes_dropped": 0,
+      "per_category": {
+        "Accessories": 1074,
+        "Bottoms": 582,
+        "Outerwear": 347,
+        "Shoes": 1554,
+        "Tops": 1108
+      }
+    },
+    "test": {
+      "rows_seen": 2000,
+      "images_written": 2000,
+      "images_reused": 0,
+      "boxes_written": 6970,
+      "dropped_parts": 7334,
+      "dropped_tiny": 33,
+      "dropped_invalid": 0,
+      "images_without_items": 0,
+      "images_dropped_by_cap": 0,
+      "capped_boxes_dropped": 0,
+      "per_category": {
+        "Accessories": 1680,
+        "Bottoms": 870,
+        "Outerwear": 646,
+        "Shoes": 1908,
+        "Tops": 1866
+      }
+    }
+  }
+}

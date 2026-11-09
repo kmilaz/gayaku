@@ -57,7 +57,7 @@ fired.
 
 ## Open
 
-* **Whether `Accessories` stays one slot.** 0.382 AP50 against 0.78-0.80 for the garment slots is the evidence for splitting it into Bag, Hat and Other; that changes the app's Category vocabulary, so it is the owner's call.
+* **`Accessories` stays one slot for now** (settled): 0.382 AP50 against 0.78-0.80 for the garment slots is the evidence for splitting it into Bag, Hat and Other, but the 18 classes have no bag to classify a detected bag as, so splitting the detector alone would not fix the name. It is flagged by default in the review screen (`docs/multi-item-scan.md`) and splits when bag detection arrives as a class of its own.
 * **The confidence and IoU thresholds the app uses.** The training run reports AP, not the operating point the review screen should adopt; they come from a sweep on real photographs, and `docs/multi-item-scan.md` keeps them marked pending until then.
 * **The multi-item review UI**, which is the owner's design decision, not a model one; the contract is written and its open questions are listed there.
 

@@ -66,11 +66,18 @@ surfaced to the user — it is only logged in the review screen's debug view.
 
 ## What the review screen shows
 
-One card per item, in pipeline order. Each card carries the cutout, the suggested name, its
-Category, the colour swatch with `colorName`, and the confidence as a percentage. Copy comes
-from `design/`; this contract does not invent user-facing wording.
+**One item at a time, as a carousel** (the owner's choice over a vertical list). The photo fills
+the top with the current item's box outlined, and the card below it carries the cutout, the
+suggested name, its Category, the colour swatch with `colorName`, and the confidence as a
+percentage. Swiping, or the previous/next buttons, moves to the next item in pipeline order;
+the last screen holds the save action and the "n of m" indicator. The trade-off is deliberate:
+three garments cost three swipes, and the screen stays readable on a phone where three stacked
+cards would not. Copy comes from `design/`; this contract does not invent user-facing wording.
 
-Three states per item, and the card is the same in all of them:
+Three states per item, and the card is the same in all of them. A fourth trigger marks an item
+whatever the classifier said: **`detectedCategory == Accessories` is flagged by default**, because
+the detector cannot tell a bag from a belt (0.382 AP50 against 0.78-0.80 for the garment slots) and
+the 18 classes have no bag at all, so its name is the least trustworthy on the screen.
 
 * **Classified** — `confidence` at or above the flag threshold.
 * **Flagged** — `confidence` below it. The card says the name may be wrong, offers the label
@@ -148,12 +155,14 @@ exists at all.
 * **Thresholds themselves.** They are the detector's and the classifier's, not the UI's; the
   UI reads them from one place so a re-trained model does not need a screen change.
 
-## Open questions for the owner
+## Settled by the owner
 
-1. Six is the cap. Do you want the same number for a single photo, or fewer?
-2. Should the review screen be a vertical list of cards, or one card at a time with the photo
-   on top? The list matches `wardrobe_screen.dart`; the carousel matches the photo-first
-   flow of `scan_screen.dart`.
-
-Settled: a flagged item may be saved with a visible warning, and the wardrobe keeps the badge
-plus a note that the name can be edited later.
+* **Cap: 6 items per scan**, largest boxes first, with a count of what was left out.
+* **Carousel review**: one item at a time over the photo, not a vertical list.
+* **A flagged item may be saved** with a visible warning; the `WardrobeItem` keeps the badge and a
+  note that the name and Category can be edited later.
+* **`Accessories` stays one Category** for now and is flagged by default rather than split. It
+  splits only when bag detection arrives as a class of its own.
+* **`Kaos_Lengan_Panjang` stays as trained** (33.3 % recall, 9 of 21 test photographs predicted
+  `Sweter`). Flipping the source preference trades one problem for another without new data, so
+  the decision waits for what the owner sees on a phone.

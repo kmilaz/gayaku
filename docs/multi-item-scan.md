@@ -73,10 +73,14 @@ from `design/`; this contract does not invent user-facing wording.
 Three states per item, and the card is the same in all of them:
 
 * **Classified** — `confidence` at or above the flag threshold.
-* **Flagged** — `confidence` below it. The card says the name may be wrong and offers the
-  label picker. **pending**: threshold, from the classifier's per-class recall in
-  `ml_workspace/yolo/artifacts/report.md`; a single global cut is wrong because
-  `Kaos_Lengan_Panjang` (33.3 % recall) and `Sepatu` (98.6 %) cannot share one.
+* **Flagged** — `confidence` below it. The card says the name may be wrong, offers the label
+  picker, **and still lets the user save**. Saving is the owner's decision: forcing the picker
+  on every uncertain item would turn a three-garment scan into three dialogs. The warning is
+  not dismissed with the screen — the saved `WardrobeItem` keeps a badge, and the wardrobe
+  tells the user the name and Category can be changed at any time. **pending**: threshold,
+  from the classifier's per-class recall in `ml_workspace/yolo/artifacts/report.md`; a single
+  global cut is wrong because `Kaos_Lengan_Panjang` (33.3 % recall) and `Sepatu` (98.6 %)
+  cannot share one.
 * **Unclassified** — classification failed but the cutout exists. The name field is empty,
   the picker is required before saving, and the item is saved only if the user chooses a
   label. Dropping it silently is rejected: a cutout the detector found is real even when the
@@ -150,5 +154,6 @@ exists at all.
 2. Should the review screen be a vertical list of cards, or one card at a time with the photo
    on top? The list matches `wardrobe_screen.dart`; the carousel matches the photo-first
    flow of `scan_screen.dart`.
-3. When the classifier is flagged, must the user open the picker, or may they save the
-   suggested name with a visible warning?
+
+Settled: a flagged item may be saved with a visible warning, and the wardrobe keeps the badge
+plus a note that the name can be edited later.

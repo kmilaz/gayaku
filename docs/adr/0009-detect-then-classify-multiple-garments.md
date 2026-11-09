@@ -44,7 +44,7 @@ fired.
 | recall | 0.696 | 0.661 | 0.870 | 0.853 | 0.754 | **0.343** |
 
 * **`Accessories` is the weak slot, and the merge is why.** Thirteen unrelated item categories (bag, belt, tie, hat, sock, watch, glasses, umbrella, â€¦) share one output, so a bag competes with a belt for the same class. Merging them was right for the app's five Categories and wrong for the detector's signal: 0.382 AP50 against 0.78-0.80 everywhere else. Either the slot splits into Bag/Hat/Other later, or the review screen treats its boxes as advisory.
-* **Export contract**: `garment_detector.tflite`, 12,767,822 bytes, input `[1,3,640,640]` float32 **NCHW**, output `[1,9,8400]` float32 (4 box coordinates and 5 class scores, no objectness). `scan_pipeline.dart` already packs NCHW through `rgbaToNchwFloats`, so the detector needs no new layout work on the Dart side.
+* **Export contract**: `garment_detector.tflite`, 12,767,821 bytes, input `[1,3,640,640]` float32 **NCHW**, output `[1,9,8400]` float32 (4 box coordinates and 5 class scores, no objectness), 256 operators. `scan_pipeline.dart` already packs NCHW through `rgbaToNchwFloats`, so the detector needs no new layout work on the Dart side. The copy produced by the commit run has sha256 `72d2ba68â€¦`; a retrain re-exports different weights, so the hash identifies the file, not the recipe.
 * **A capped tree was enough for a first detector.** 4,030 photographs reached mAP50 0.7081 and cost 35 minutes of T4 time, which is what makes iterating on the Category list affordable at all.
 
 ## Considered options

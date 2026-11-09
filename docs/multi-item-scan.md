@@ -123,7 +123,7 @@ Types only; no implementation in this document.
 * `checkContracts()` gains the detector's tensor contract, in the same style as the two models
   it already checks: input `[1,3,640,640]` float32 **NCHW**, output `[1,9,8400]` float32 (four
   box coordinates and five class scores, no objectness). Both come from the exported
-  `garment_detector.tflite` (12,767,822 bytes), not from the documentation.
+  `garment_detector.tflite` (12,767,821 bytes, sha256 `72d2ba68â€¦`), not from the documentation.
 
 ## What the first detector measured
 

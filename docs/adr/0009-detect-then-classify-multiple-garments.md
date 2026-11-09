@@ -30,6 +30,23 @@ The mapping onto the five Categories follows `labels.json`, not intuition — `s
 * **Garments worn on a body stay hard.** The detector will find the box; matting a worn garment still cuts the wrong silhouette, which is what the `pleated_midi_skirt` sweep photograph shows. Detection does not fix that, and the Correction step remains the answer.
 * **Licence posture**: Ultralytics-trained weights are AGPL-3.0 (ADR-0006); Fashionpedia's annotations are CC BY 4.0 and need attribution if the annotations are redistributed; its photographs keep their source terms. Weights and builds stay coursework artifacts (ADR-0003, ADR-0007).
 
+## Result (the first run)
+
+Trained on a Kaggle T4 from the capped tree (`--max-boxes-per-category 2000`, `docs/adr/0010`): 4,030 train
+photographs and 10,000 boxes, with validation (1,158) and test (2,000) kept whole so the numbers measure
+the model rather than the cap. About 2.5 minutes per epoch at 640 px for 40 epochs; early stopping never
+fired.
+
+| `test` | all | Tops | Bottoms | Outerwear | Shoes | Accessories |
+|---|---|---|---|---|---|---|
+| mAP50 | 0.7081 | 0.792 | 0.787 | 0.781 | 0.800 | **0.382** |
+| mAP50-95 | 0.5417 | 0.625 | 0.657 | 0.657 | 0.538 | 0.223 |
+| recall | 0.696 | 0.661 | 0.870 | 0.853 | 0.754 | **0.343** |
+
+* **`Accessories` is the weak slot, and the merge is why.** Thirteen unrelated item categories (bag, belt, tie, hat, sock, watch, glasses, umbrella, â€¦) share one output, so a bag competes with a belt for the same class. Merging them was right for the app's five Categories and wrong for the detector's signal: 0.382 AP50 against 0.78-0.80 everywhere else. Either the slot splits into Bag/Hat/Other later, or the review screen treats its boxes as advisory.
+* **Export contract**: `garment_detector.tflite`, 12,767,822 bytes, input `[1,3,640,640]` float32 **NCHW**, output `[1,9,8400]` float32 (4 box coordinates and 5 class scores, no objectness). `scan_pipeline.dart` already packs NCHW through `rgbaToNchwFloats`, so the detector needs no new layout work on the Dart side.
+* **A capped tree was enough for a first detector.** 4,030 photographs reached mAP50 0.7081 and cost 35 minutes of T4 time, which is what makes iterating on the Category list affordable at all.
+
 ## Considered options
 
 * **Keep ADR-0005** (one garment per photo, no detector): the pipeline already works and the classifier is measured, but the product cannot accept a normal photo. Rejected by the owner: it contradicts why YOLO was chosen.
@@ -40,6 +57,8 @@ The mapping onto the five Categories follows `labels.json`, not intuition — `s
 
 ## Open
 
-* Which dataset the first detector ships from (Fashionpedia proposed) and whether a second source is merged in.
-* Whether that training runs on this CPU or on a GPU; measure the epoch first.
-* The multi-item review UI, which is the owner's design decision, not a model one.
+* **Whether `Accessories` stays one slot.** 0.382 AP50 against 0.78-0.80 for the garment slots is the evidence for splitting it into Bag, Hat and Other; that changes the app's Category vocabulary, so it is the owner's call.
+* **The confidence and IoU thresholds the app uses.** The training run reports AP, not the operating point the review screen should adopt; they come from a sweep on real photographs, and `docs/multi-item-scan.md` keeps them marked pending until then.
+* **The multi-item review UI**, which is the owner's design decision, not a model one; the contract is written and its open questions are listed there.
+
+Settled since this ADR was accepted: the first detector trains on Fashionpedia, and it trained on a GPU (Kaggle T4) rather than this CPU.

@@ -110,8 +110,26 @@ Types only; no implementation in this document.
 * `WardrobeItem` does not change: one item per garment, one row per item. Saving a session
   writes N rows in one transaction.
 * `checkContracts()` gains the detector's tensor contract, in the same style as the two models
-  it already checks: input `[1,640,640,3]` float32 (pending confirmation after export), and
-  the documented output layout.
+  it already checks: input `[1,3,640,640]` float32 **NCHW**, output `[1,9,8400]` float32 (four
+  box coordinates and five class scores, no objectness). Both come from the exported
+  `garment_detector.tflite` (12,767,822 bytes), not from the documentation.
+
+## What the first detector measured
+
+`test` split, 2,000 photographs and 6,970 boxes (`docs/adr/0009`):
+
+| Category | mAP50 | recall | consequence for this contract |
+|---|---|---|---|
+| Tops | 0.792 | 0.661 | boxes are reliable; classification decides the name |
+| Bottoms | 0.787 | 0.870 | highest recall of the five |
+| Outerwear | 0.781 | 0.853 | containment with Tops works, as designed |
+| Shoes | 0.800 | 0.754 | best AP of the five |
+| Accessories | **0.382** | **0.343** | treat these boxes as advisory, or split the Category later |
+
+`Accessories` merges thirteen unrelated item categories, so a bag and a belt compete for one class. Until
+that slot splits, an `Accessories` box that never reaches the review screen costs the user an accessory
+rather than a garment; that is the acceptable failure mode for this version, and it is the reason the item cap
+exists at all.
 
 ## Not covered
 

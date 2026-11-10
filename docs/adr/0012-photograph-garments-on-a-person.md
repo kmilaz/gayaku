@@ -32,6 +32,32 @@ The app has been asking for a flat-lay — one garment laid out on a plain backg
 Dropped on purpose: the 19 part categories (`sleeve`, `collar`, `pocket`, `zipper`, …) and every
 accessory category, because neither has a garment class in the app.
 
+## What was actually cut
+
+`ml_workspace/scripts/fashionpedia_crops.py` caps every class at **2,000 crops** (1,600 / 200 / 200
+across train / val / test) so the twelve classes weigh the same in training and no class can fill
+`val` or `test` by itself. On the 45,623 training photographs that yields **22,719 crops**:
+
+| Class | train | val | test | total |
+|---|---|---|---|---|
+| Celana_Panjang | 1,600 | 200 | 200 | 2,000 |
+| Celana_Pendek | 1,600 | 200 | 200 | 2,000 |
+| Gaun | 1,600 | 200 | 200 | 2,000 |
+| Jaket | 1,600 | 200 | 200 | 2,000 |
+| Kaos | 1,600 | 200 | 200 | 2,000 |
+| Kemeja | 1,600 | 200 | 200 | 2,000 |
+| Mantel | 1,600 | 200 | 200 | 2,000 |
+| Rok | 1,600 | 200 | 200 | 2,000 |
+| Rompi | 557 | 86 | 76 | 719 |
+| Sepatu | 1,600 | 200 | 200 | 2,000 |
+| Sweter | 1,600 | 200 | 200 | 2,000 |
+| Topi | 1,600 | 200 | 200 | 2,000 |
+| **Total** | **18,157** | **2,286** | **2,276** | **22,719** |
+
+`Rompi` is the only class that cannot reach the cap: the whole set holds 719 vest boxes. Splits are
+assigned per photograph, so the 76 test crops of a class come from 76 photographs no training crop
+touches.
+
 ## Consequences
 
 * **The 18-class model is replaced by a smaller vocabulary**, so `garment_labels.dart` and the Dart contract change with it, and stored `WardrobeItem`s may carry labels the new model no longer produces. Reading an old label stays possible; predicting it does not.

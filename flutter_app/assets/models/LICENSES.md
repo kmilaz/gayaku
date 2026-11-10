@@ -24,31 +24,26 @@ the same conversion: https://github.com/PINTO0309/PINTO_model_zoo (061_U-2-Net).
 
 ## `garment_classifier.tflite` — garment classifier
 
-**Shipped today** is the CC0 bootstrap export; the Kaggle-trained catalogue model takes the
-same slot later (`docs/adr/0003`).
+Names the garment inside a box the detector found. **Shipped today is the merged 18-class
+model** (`docs/adr/0008`, `docs/adr/0011`); the 10-class CC0 bootstrap it replaced lives on in
+`ml_workspace/bootstrap/artifacts/` as the previous generation.
 
 | | |
 |---|---|
-| Model | torchvision MobileNetV3-small fine-tuned to 10 classes at 224×224 |
-| Licence | weights trained by us; torchvision's ImageNet initialisation is BSD-3-Clause |
-| Training data | `alexeygrigorev/clothing-dataset-small` (CC0 — that is the uploader's claim over its labels; the photographs are third-party and are not redistributed here) |
-| Class list | `ml_workspace/bootstrap/artifacts/classes.json` — T-Shirt, Shirt, Longsleeve, Outwear, Dress, Skirt, Pants, Shorts, Shoes, Hat; the order `flutter_app/lib/logic/garment_labels.dart` mirrors |
-| sha256 | `4dea19d6b3dbe30bd5a8dc9686803afdd657e9dedbf234d0fd61e5a6be313457` |
-| Size | 6,129,368 bytes (6.1 MB) |
-| Input | `image` — `[1, 224, 224, 3]` float32, NHWC RGB in `[0, 1]`, ImageNet normalisation baked into the graph |
-| Output | `Identity` — `[1, 10]` float32 softmax |
+| Model | Ultralytics YOLOv8n-cls fine-tuned to 18 classes at 224Ã—224 |
+| Licence | **AGPL-3.0** — Ultralytics weights trained by us (`docs/adr/0006`); coursework artifact, not for redistribution |
+| Training data | `alexeygrigorev/clothing-dataset-small` (CC0) merged with `ryanbadai/clothes-dataset` by `ml_workspace/scripts/merge_datasets.py`: 9,728 unique photographs, split 7,779 / 957 / 992 (`docs/adr/0008`) |
+| Measured on `test` | top-1 **0.8155**, top-5 0.9808, macro-F1 0.7968 over 992 photographs |
+| Class list | `ml_workspace/yolo/artifacts/classes_merged.json` â€” Blazer, Celana_Panjang, Celana_Pendek, Gaun, Hoodie, Jaket, Jaket_Denim, Jaket_Olahraga, Jeans, Kaos, Kaos_Lengan_Panjang, Kemeja, Mantel, Polo, Rok, Sepatu, Sweter, Topi; the order `flutter_app/lib/logic/garment_labels.dart` mirrors |
+| sha256 | `d0ec7b3514b2572eb79da9a8af06f720951bd8eb57edda8f877d65d4e6d63d4e` |
+| Size | 5,862,976 bytes (5.9 MB) |
+| Input | `[1, 224, 224, 3]` float32, NHWC RGB in `[0, 1]`, ImageNet normalisation baked into the graph |
+| Output | `[1, 18]` float32 softmax |
 
-**Final model**, exported by `ml_workspace/kaggle/fashion_classifier.ipynb` with class list
-`ml_workspace/artifacts/classes.json`:
-
-- **Weights trained by us** (torchvision MobileNetV3-small, ImageNet-initialised; the
-  torchvision weights are BSD-3-Clause).
-- **Training data is the Kaggle Fashion Product Images catalogue whose MIT tag covers
-  labels, not the photographs — coursework artifacts, not for redistribution.**
-- Landing it means replacing this asset and regenerating
-  `flutter_app/lib/logic/garment_labels.dart` in the same commit — `gen_dart_labels.py`
-  refuses a class list whose length does not match the shipped asset's output width — and
-  adding the new sha256 and size here.
+Class names are Indonesian because the UI shows them; `garmentLabelCategory` maps each one onto
+one of the five Categories. Swapping this asset and regenerating `garment_labels.dart` must
+happen in the same commit â€” `gen_dart_labels.py` refuses a class list whose length does not
+match the shipped asset's output width.
 
 ## `garment_detector.tflite` — garment detector
 

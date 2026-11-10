@@ -661,9 +661,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       (route) => false,
                                     );
                                   },
-                                  child: const Text(
+                                  child: Text(
                                     'Keluar',
-                                    style: TextStyle(color: Colors.red),
+                                    style: TextStyle(color: palette.actionInk),
                                   ),
                                 ),
                               ],
@@ -673,7 +673,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Text(
                           'Log Out',
                           style: TextStyle(
-                            color: palette.action,
+                            color: palette.actionInk,
                             fontSize: 13,
                             height: 18 / 13,
                             fontWeight: FontWeight.w600,

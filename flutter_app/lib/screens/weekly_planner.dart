@@ -181,7 +181,7 @@ class _WeeklyPlannerState extends State<WeeklyPlanner> {
               ),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
-                activeThumbColor: palette.action,
+                activeThumbColor: palette.actionInk,
                 title: const Text('Show days without an outfit'),
                 value: _showEmptyDays,
                 onChanged: (value) {
@@ -318,7 +318,7 @@ class _WeeklyPlannerState extends State<WeeklyPlanner> {
                 style: GoogleFonts.inter(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: isSelected ? palette.action : palette.inkMuted,
+                  color: isSelected ? palette.actionInk : palette.inkMuted,
                 ),
               ),
               const SizedBox(height: 3),
@@ -490,7 +490,7 @@ class _PlanOutfitDialogState extends State<_PlanOutfitDialog> {
                                       color: palette.accentInk,
                                       shadows: [
                                         Shadow(
-                                          color: palette.ink.withValues(
+                                          color: palette.canvas.withValues(
                                             alpha: 0.35,
                                           ),
                                           blurRadius: 5,
@@ -610,7 +610,7 @@ class _WeekSummary extends StatelessWidget {
               value: plannedCount / 7,
               minHeight: 8,
               backgroundColor: palette.canvas,
-              valueColor: AlwaysStoppedAnimation(palette.action),
+              valueColor: AlwaysStoppedAnimation(palette.actionInk),
             ),
           ),
           const SizedBox(height: 10),

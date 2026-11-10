@@ -27,7 +27,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           Container(
             height: MediaQuery.of(context).size.height * 0.35,
             width: double.infinity,
-            color: palette.ink,
+            color: palette.action,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -56,7 +56,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Text(
                   "Sign up to discover amazing things near around you.",
                   style: TextStyle(
-                    color: palette.onAction.withValues(alpha: 0.7),
+                    color: palette.onAction.withValues(alpha: 0.8),
                     fontSize: 13,
                     height: 18 / 13,
                   ),
@@ -182,7 +182,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           );
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: palette.ink,
+                          backgroundColor: palette.action,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(24),

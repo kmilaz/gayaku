@@ -50,7 +50,7 @@ const detectorScoreThreshold = 0.25;
 ///
 /// Set from a measurement, not a round number: on a seated person the model produced two
 /// `Bottoms` boxes over the same lap at IoU 0.79, and both reached the review screen.
-const detectorDuplicateIou = 0.85;
+const detectorDuplicateIou = 0.70;
 
 /// Most garments one scan shows; the rest are dropped from the smallest (`docs/multi-item-scan.md`).
 const maxScanItems = 6;

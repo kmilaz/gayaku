@@ -342,6 +342,21 @@ void main() {
     });
 
     test(
+      'collapses same-Category boxes at the 0.79 overlap seen on a real photo',
+      () {
+        // Two Bottoms boxes over the same lap. IoU is about 0.79, which used to survive and
+        // showed the same trousers twice.
+        final raw = detectorTensor([
+          (0, 0.504, 0.6065, 0.714, 0.307, {1: 0.42}),
+          (1, 0.507, 0.637, 0.72, 0.274, {1: 0.49}),
+        ]);
+        final boxes = decodeDetectorOutput(raw);
+        expect(boxes, hasLength(1));
+        expect(boxes.single.score, closeTo(0.49, 1e-6));
+      },
+    );
+
+    test(
       'keeps a contained box of a different Category, because layers are real',
       () {
         final raw = detectorTensor([

@@ -2,17 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/wardrobe.dart';
+import '../navigation.dart';
+import '../screens/wardrobe_item_detail_screen.dart';
+import '../state/wardrobe_store.dart';
 import '../theme/app_theme.dart';
 import 'placeholder_image.dart';
 
 /// Horizontal list of recently added garments plus a "View all" link.
 class RecentlyAdded extends StatelessWidget {
-  const RecentlyAdded({super.key, this.items = recentItems});
+  const RecentlyAdded({super.key, this.items});
 
-  final List<WardrobeItem> items;
+  /// Overrides the catalog under test; the app reads [wardrobeItems].
+  final List<WardrobeItem>? items;
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<WardrobeItem>>(
+      valueListenable: wardrobeItems,
+      builder: (context, catalog, _) => _build(context, items ?? catalog),
+    );
+  }
+
+  Widget _build(BuildContext context, List<WardrobeItem> items) {
+    // An account with no garments gets no strip: no filler tiles.
+    if (items.isEmpty) return const SizedBox.shrink();
     final palette = AppColors.of(context);
     return Column(
       children: [
@@ -32,7 +45,7 @@ class RecentlyAdded extends StatelessWidget {
               ),
             ),
             TextButton(
-              onPressed: () => showComingSoon(context, 'Wardrobe'),
+              onPressed: () => openNavDestination(context, 1),
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 minimumSize: const Size(0, 36),
@@ -60,7 +73,11 @@ class RecentlyAdded extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = items[index];
               return GestureDetector(
-                onTap: () => showComingSoon(context, item.name),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => WardrobeItemDetailScreen(item: item),
+                  ),
+                ),
                 child: SizedBox(
                   width: 130,
                   child: Column(

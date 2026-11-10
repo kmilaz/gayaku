@@ -9,7 +9,9 @@ import '../logic/color_extraction.dart';
 import '../logic/garment_defaults.dart';
 import '../logic/scan_pipeline.dart';
 import '../models/wardrobe.dart';
+import '../services/wardrobe_service.dart';
 import '../state/wardrobe_store.dart';
+import '../state/wardrobe_sync.dart';
 import '../theme/app_theme.dart';
 
 /// Runs the models over one photo. Injectable so widget tests can drive the
@@ -152,7 +154,7 @@ class _ScanScreenState extends State<ScanScreen> {
       final cutout = File('${folder.path}/$id.png');
       await cutout.writeAsBytes(result.cutoutPng);
 
-      await addWardrobeItem(
+      await saveWardrobeItem(
         WardrobeItem(
           id: id,
           name: name,
@@ -173,6 +175,9 @@ class _ScanScreenState extends State<ScanScreen> {
       messenger.showSnackBar(
         const SnackBar(content: Text('Gagal menyimpan gambar potongan.')),
       );
+    } on WardrobeException catch (e) {
+      // Backend menolak (RLS, sesi habis): jangan pura-pura tersimpan.
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 

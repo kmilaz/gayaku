@@ -5,7 +5,11 @@ import 'package:flutter_app/screens/home_screen.dart';
 import 'package:flutter_app/screens/favorites_screen.dart';
 import 'package:flutter_app/screens/wardrobe_screen.dart';
 import 'package:flutter_app/theme/app_theme.dart';
+import 'package:flutter_app/state/outfit_store.dart';
+import 'package:flutter_app/state/wardrobe_store.dart';
 import 'package:flutter_app/widgets/greeting_header.dart';
+
+import 'fixtures.dart';
 
 void main() {
   testWidgets('HomeScreen renders all sections at 420px', (
@@ -20,18 +24,21 @@ void main() {
 
     final greeting = GreetingHeader.greetingFor(DateTime.now());
     expect(find.textContaining(greeting.split(',').first), findsOneWidget);
-    expect(find.text('Isabella'), findsOneWidget);
+    // No demo name and no stock garments: the header and the strips follow the
+    // signed-in account.
+    expect(find.text('Isabella'), findsNothing);
     expect(find.text("Today's Look"), findsOneWidget);
+    expect(find.text('Belum ada rencana untuk hari ini.'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (w) =>
             w is TextField &&
             (w.decoration?.hintText ?? '').startsWith('Search by occasion'),
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(find.text('Quick Actions'), findsOneWidget);
-    expect(find.text('Recently Added'), findsOneWidget);
+    expect(find.text('Recently Added'), findsNothing);
   });
 
   testWidgets('Your Favorite opens Wardrobe favorites', (
@@ -63,6 +70,23 @@ void main() {
   testWidgets('Outfit detail shows look components and actions', (
     WidgetTester tester,
   ) async {
+    // The favorites screen lists saved combinations only, so the test saves
+    // one from the fixture catalog.
+    wardrobeItems.value = wardrobeFixture;
+    savedOutfits.value = [
+      SavedOutfit(
+        id: 'look-1',
+        name: 'Beige Trench & Denim',
+        itemIds: wardrobeFixture.take(3).map((i) => i.id).toList(),
+        threshold: 0.94,
+        favorite: true,
+      ),
+    ];
+    addTearDown(() {
+      savedOutfits.value = [];
+      wardrobeItems.value = [];
+    });
+
     await tester.pumpWidget(const MaterialApp(home: FavoritesScreen()));
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
     await tester.pumpAndSettle();

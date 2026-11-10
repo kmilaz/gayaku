@@ -26,32 +26,17 @@ void main() {
     if (await tempDir.exists()) await tempDir.delete(recursive: true);
   });
 
-  test('a fresh file is seeded with the nine demo garments', () async {
+  test('a fresh file starts empty: nothing is seeded', () async {
     await initWardrobeStore(factory: databaseFactoryFfi, path: dbPath);
 
-    expect(seedWardrobeItems, hasLength(9));
-    expect(
-      wardrobeItems.value.map((i) => i.id).toList(),
-      seedWardrobeItems.map((i) => i.id).toList(),
-    );
-
-    // Every column survives the round trip through SQLite.
-    final blouse = wardrobeItems.value.first;
-    expect(blouse.name, 'Silk Blouse');
-    expect(blouse.category, 'Tops');
-    expect(blouse.subcategory, isNull);
-    expect(blouse.brand, 'Zara');
-    expect(blouse.colorName, 'Krem');
-    expect(blouse.color, const Color(0xFFEFE3D0));
-    expect(blouse.formality, 4);
-    expect(blouse.occasions, const ['Formal', 'Smart-Casual']);
+    expect(wardrobeItems.value, isEmpty);
   });
 
-  test('opening the same file again neither re-seeds nor loses rows', () async {
+  test('opening the same file again does not invent rows', () async {
     await initWardrobeStore(factory: databaseFactoryFfi, path: dbPath);
     await initWardrobeStore(factory: databaseFactoryFfi, path: dbPath);
 
-    expect(wardrobeItems.value, hasLength(9));
+    expect(wardrobeItems.value, isEmpty);
   });
 
   test('concurrent opens serialise onto one connection', () async {
@@ -60,7 +45,7 @@ void main() {
       initWardrobeStore(factory: databaseFactoryFfi, path: dbPath),
     ]);
 
-    expect(wardrobeItems.value, hasLength(9));
+    expect(wardrobeItems.value, isEmpty);
   });
 
   test('addWardrobeItem is still there after reopening the file', () async {
@@ -78,7 +63,7 @@ void main() {
       occasions: const ['Kasual'],
     );
     await addWardrobeItem(scanned);
-    expect(wardrobeItems.value, hasLength(10));
+    expect(wardrobeItems.value, hasLength(1));
 
     // A restart: the in-memory list is gone, the file is reopened.
     wardrobeItems.value = const [];
@@ -92,23 +77,29 @@ void main() {
     expect(stored.color, const Color(0xFF1A1A1A));
     expect(stored.formality, 2);
     expect(stored.occasions, const ['Kasual']);
-    expect(wardrobeItems.value, hasLength(10), reason: 'not seeded twice');
+    expect(wardrobeItems.value, hasLength(1), reason: 'not inserted twice');
   });
 
   test('deleteWardrobeItem drops the row, and reaches the file', () async {
     await initWardrobeStore(factory: databaseFactoryFfi, path: dbPath);
 
-    await deleteWardrobeItem('seed-linen-shirt');
-    expect(wardrobeItems.value, hasLength(8));
-    expect(wardrobeItems.value.any((i) => i.id == 'seed-linen-shirt'), isFalse);
+    final kept = WardrobeItem(
+      id: newWardrobeItemId(),
+      name: 'Kemeja Linen',
+      category: 'Tops',
+      imagePath: '${tempDir.path}/cutouts/linen.png',
+    );
+    await addWardrobeItem(kept);
+    await deleteWardrobeItem(kept.id);
+    expect(wardrobeItems.value, isEmpty);
 
     wardrobeItems.value = const [];
     await initWardrobeStore(factory: databaseFactoryFfi, path: dbPath);
-    expect(wardrobeItems.value, hasLength(8));
+    expect(wardrobeItems.value, isEmpty);
 
     // An id that is not there is a no-op, not a crash.
-    await deleteWardrobeItem('seed-does-not-exist');
-    expect(wardrobeItems.value, hasLength(8));
+    await deleteWardrobeItem('does-not-exist');
+    expect(wardrobeItems.value, isEmpty);
   });
 
   test('two garments may share a name under different ids', () async {

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>GAYAKU — ERD Supabase</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin:0; font:13px/1.4 var(--font, ui-sans-serif, system-ui, sans-serif); color: var(--foreground,#111); background: transparent; }
+  #canvas { position:relative; width:1240px; height:900px; }
+  .t { position:absolute; border:1px solid var(--border,#bbb); border-radius:8px; background:var(--card,#fff);
+       box-shadow:0 1px 3px rgba(0,0,0,.10); overflow:hidden; }
+  .t > h3 { margin:0; padding:6px 10px; font-size:12.5px; font-weight:600; border-bottom:1px solid var(--border,#bbb);
+            background:color-mix(in srgb, var(--accent,#4a7) 12%, transparent); }
+  table { border-collapse:collapse; width:100%; }
+  td { padding:2px 8px; font-size:11px; vertical-align:top; border:0; white-space:nowrap; }
+  td.k { color:var(--muted-foreground,#777); width:38px; font-size:9.5px; letter-spacing:.02em; }
+  td.n { font-weight:600; }
+  td.ty { color:var(--muted-foreground,#777); }
+  td.note { color:var(--muted-foreground,#888); font-size:10px; white-space:normal; }
+  .auth      { border-left:3px solid #888; }
+  .live      { border-left:3px solid #4a7fc1; }
+  .storage   { border-left:3px solid #d79b00; }
+  .retired   { border-left:3px solid #b85450; opacity:.62; }
+  .planned   { border-left:3px dashed #9673a6; border-style:dashed; border-left-style:solid; opacity:.8; }
+  svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
+  svg path { fill:none; stroke:#888; stroke-width:1.3; }
+  svg text { font-size:9.5px; fill:#888; }
+  .legend { position:absolute; left:16px; bottom:8px; font-size:11px; color:var(--muted-foreground,#777); }
+  .legend b { font-weight:600; }
+</style>
+</head>
+<body>
+<div id="canvas">
+  <svg id="wires">
+    <defs>
+      <marker id="many" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+        <path d="M0,1 L9,5 L0,9" style="fill:none;stroke:#888;stroke-width:1.1"/>
+      </marker>
+      <marker id="one" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+        <path d="M3,0 L3,10" style="fill:none;stroke:#888;stroke-width:1.4"/>
+      </marker>
+    </defs>
+  </svg>
+
+  <!-- auth.users -->
+  <div class="t auth" id="users" style="left:10px; top:10px; width:300px">
+    <h3>auth.users — Supabase, managed</h3>
+    <table>
+      <tr><td class="k">PK</td><td class="n">id</td><td class="ty">uuid</td><td class="note">auth.uid()</td></tr>
+      <tr><td class="k"></td><td class="n">email</td><td class="ty">text</td><td class="note"></td></tr>
+      <tr><td class="k"></td><td class="n">raw_user_meta_data</td><td class="ty">jsonb</td><td class="note">-&gt;&gt; display_name</td></tr>
+    </table>
+  </div>
+
+  <!-- profiles -->
+  <div class="t live" id="profiles" style="left:420px; top:10px; width:330px">
+    <h3>public.profiles</h3>
+    <table>
+      <tr><td class="k">PK,FK</td><td class="n">id</td><td class="ty">uuid</td><td class="note">→ auth.users, cascade</td></tr>
+      <tr><td class="k"></td><td class="n">email</td><td class="ty">text</td><td class="note">not null, ''</td></tr>
+      <tr><td class="k"></td><td class="n">display_name</td><td class="ty">text</td><td class="note">dari form sign-up</td></tr>
+      <tr><td class="k"></td><td class="n">photo_url</td><td class="ty">text</td><td class="note">nullable, belum dipakai</td></tr>
+      <tr><td class="k"></td><td class="n">created_at</td><td class="ty">timestamptz</td><td class="note">default now()</td></tr>
+      <tr><td class="k"></td><td class="n">updated_at</td><td class="ty">timestamptz</td><td class="note">trigger touch</td></tr>
+    </table>
+  </div>
+
+  <!-- avatars -->
+  <div class="t storage" id="avatars" style="left:830px; top:10px; width:300px">
+    <h3>storage bucket — avatars (private)</h3>
+    <table>
+      <tr><td class="k">key</td><td class="n">name</td><td class="ty">text</td><td class="note">&lt;uid&gt;/&lt;file&gt;</td></tr>
+      <tr><td class="k">RLS</td><td class="n">policy</td><td class="ty"></td><td class="note">foldername[1] = auth.uid()</td></tr>
+      <tr><td class="k"></td><td class="n">status</td><td class="ty"></td><td class="note">belum ada UI upload</td></tr>
+    </table>
+  </div>
+
+  <!-- cutouts retired -->
+  <div class="t retired" id="cutouts" style="left:830px; top:150px; width:300px">
+    <h3>storage bucket — cutouts (RETIRED)</h3>
+    <table>
+      <tr><td class="k"></td><td class="n">(unused)</td><td class="ty"></td><td class="note">4 policy di-drop</td></tr>
+      <tr><td class="k"></td><td class="n">image_file</td><td class="ty"></td><td class="note">PNG pindah ke HP</td></tr>
+    </table>
+  </div>
+
+  <!-- wardrobe_items -->
+  <div class="t live" id="wardrobe" style="left:420px; top:290px; width:330px">
+    <h3>public.wardrobe_items</h3>
+    <table>
+      <tr><td class="k">PK</td><td class="n">id</td><td class="ty">uuid</td><td class="note">gen_random_uuid()</td></tr>
+      <tr><td class="k">FK</td><td class="n">owner_id</td><td class="ty">uuid</td><td class="note">default auth.uid()</td></tr>
+      <tr><td class="k"></td><td class="n">name</td><td class="ty">text</td><td class="note">btrim 1..80</td></tr>
+      <tr><td class="k"></td><td class="n">label</td><td class="ty">text</td><td class="note">18 label YOLO</td></tr>
+      <tr><td class="k"></td><td class="n">category</td><td class="ty">text</td><td class="note">Tops|Bottoms|Outerwear|Shoes|Acc</td></tr>
+      <tr><td class="k"></td><td class="n">color_name</td><td class="ty">text</td><td class="note">label K-Means</td></tr>
+      <tr><td class="k"></td><td class="n">dominant_color</td><td class="ty">text</td><td class="note">#RRGGBB (regex)</td></tr>
+      <tr><td class="k"></td><td class="n">formality</td><td class="ty">smallint</td><td class="note">1..5, default 3</td></tr>
+      <tr><td class="k"></td><td class="n">confidence</td><td class="ty">real</td><td class="note">0..1, nullable</td></tr>
+      <tr><td class="k"></td><td class="n">image_file</td><td class="ty">text</td><td class="note">nama file lokal</td></tr>
+      <tr><td class="k"></td><td class="n">created_at</td><td class="ty">timestamptz</td><td class="note"></td></tr>
+      <tr><td class="k"></td><td class="n">updated_at</td><td class="ty">timestamptz</td><td class="note">trigger touch</td></tr>
+    </table>
+  </div>
+
+  <!-- planned looks -->
+  <div class="t planned" id="looks" style="left:10px; top:520px; width:300px">
+    <h3>outfit_looks — planned</h3>
+    <table>
+      <tr><td class="k">PK</td><td class="n">id</td><td class="ty">uuid</td><td class="note"></td></tr>
+      <tr><td class="k">FK</td><td class="n">owner_id</td><td class="ty">uuid</td><td class="note"></td></tr>
+      <tr><td class="k"></td><td class="n">title, occasion</td><td class="ty">text</td><td class="note">Formal|Kasual|…</td></tr>
+      <tr><td class="k">FK</td><td class="n">item_ids</td><td class="ty">uuid[]</td><td class="note">→ wardrobe_items</td></tr>
+    </table>
+  </div>
+
+  <!-- planned planner -->
+  <div class="t planned" id="planner" style="left:420px; top:660px; width:330px">
+    <h3>planner_entries — planned</h3>
+    <table>
+      <tr><td class="k">PK</td><td class="n">id</td><td class="ty">uuid</td><td class="note"></td></tr>
+      <tr><td class="k">FK</td><td class="n">owner_id</td><td class="ty">uuid</td><td class="note"></td></tr>
+      <tr><td class="k"></td><td class="n">day</td><td class="ty">date</td><td class="note"></td></tr>
+      <tr><td class="k">FK</td><td class="n">look_id</td><td class="ty">uuid</td><td class="note">→ outfit_looks</td></tr>
+    </table>
+  </div>
+
+  <div class="legend"><b>biru</b> tabel live · <b>abu</b> dikelola Supabase · <b>oranye</b> storage aktif · <b>merah putus-putus</b> sudah pensiun · <b>ungu putus-putus</b> belum dibuat</div>
+</div>
+
+<script>
+const REL = [
+  ['users','profiles','1 : 1','trigger on_auth_user_created'],
+  ['users','wardrobe','1 : N','owner_id, cascade'],
+  ['profiles','avatars','1 : N','avatars/<uid>/'],
+  ['wardrobe','cutouts','1 : N','dulu image_path'],
+  ['wardrobe','looks','N : N','lewat item_ids'],
+  ['looks','planner','1 : N','look_id'],
+];
+const box = id => { const el = document.getElementById(id); const r = el.getBoundingClientRect();
+  const c = document.getElementById('canvas').getBoundingClientRect();
+  return {l:r.left-c.left, t:r.top-c.top, r:r.right-c.left, b:r.bottom-c.top, w:r.width, h:r.height}; };
+const svg = document.getElementById('wires');
+const NS = 'http://www.w3.org/2000/svg';
+for (const [a, b, card, label] of REL) {
+  const A = box(a), B = box(b);
+  // pick facing sides
+  let x1, y1, x2, y2, cx1, cx2;
+  if (A.b < B.t || B.b < A.t) {          // vertical stack
+    const down = A.b < B.t;
+    x1 = A.l + A.w/2; y1 = down ? A.b : A.t;
+    x2 = B.l + B.w/2; y2 = down ? B.t : B.b;
+    const dy = (y2 - y1) / 2;
+    cx1 = x1; cx2 = x2;
+    var d = `M${x1},${y1} C${x1},${y1+dy} ${x2},${y2-dy} ${x2},${y2}`;
+  } else {                                // side by side
+    const right = A.r < B.l;
+    x1 = right ? A.r : A.l; y1 = A.t + Math.min(A.h-14, 34);
+    x2 = right ? B.l : B.r; y2 = B.t + Math.min(B.h-14, 34);
+    const dx = (x2 - x1) / 2;
+    d = `M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`;
+  }
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', d);
+  p.setAttribute('marker-end', card.startsWith('1 : 1') || card.startsWith('1 : N') ? 'url(#one)' : 'url(#many)');
+  p.setAttribute('marker-start', card === '1 : 1' ? 'url(#one)' : card.startsWith('N') ? 'url(#many)' : '');
+  if (a === 'wardrobe' && b === 'cutouts' || a === 'wardrobe' && b === 'looks' || a === 'looks') p.style.strokeDasharray = '5 4';
+  svg.appendChild(p);
+  const t = document.createElementNS(NS, 'text');
+  t.setAttribute('x', ((x1+x2)/2) + 6);
+  t.setAttribute('y', ((y1+y2)/2) - 4);
+  t.textContent = card;
+  svg.appendChild(t);
+}
+</script>
+</body>
+</html>

@@ -7,6 +7,8 @@ import 'package:sqflite/sqflite.dart';
 
 import '../models/wardrobe.dart';
 
+export '../logic/ids.dart' show newWardrobeItemId;
+
 /// Every garment the user owns, mirroring `wardrobe.db` in insertion order.
 ///
 /// Listen to it with [ValueListenableBuilder] to rebuild on add/delete. The
@@ -24,13 +26,12 @@ Database? _db;
 Future<void> _queue = Future<void>.value();
 
 /// Opens `wardrobe.db` in the app documents directory, creates the schema and
-/// seeds it from [seedWardrobeItems] when the table is empty, then mirrors the
-/// rows into [wardrobeItems].
+/// mirrors the rows into [wardrobeItems]. Nothing is seeded: an account with
+/// no garments shows an empty wardrobe, and Supabase is what fills it.
 ///
 /// Pass [path] (and [factory]) to point the store somewhere else — the tests
 /// run it on `sqflite_common_ffi` against a temp file. Calling it again is
-/// safe: the open connection is closed first, the table is only seeded while
-/// it is empty, and an unseeded open simply leaves the rows alone.
+/// safe: the open connection is closed first and the rows are left alone.
 Future<void> initWardrobeStore({DatabaseFactory? factory, String? path}) {
   final next = _queue.then((_) => _open(factory: factory, path: path));
   // Keep the chain usable even when one open fails.
@@ -66,13 +67,6 @@ Future<void> deleteWardrobeItem(String id) async {
   wardrobeItems.value = await _readAll(db);
 }
 
-int _idSequence = 0;
-
-/// A fresh primary key for a scanned garment. Two garments saved from the same
-/// photo in the same microsecond still get distinct ids.
-String newWardrobeItemId() =>
-    'w${DateTime.now().microsecondsSinceEpoch}-${_idSequence++}';
-
 Future<void> _open({DatabaseFactory? factory, String? path}) async {
   final resolved = path ?? await _documentsPath();
   await _ensureParent(resolved);
@@ -89,7 +83,6 @@ Future<void> _open({DatabaseFactory? factory, String? path}) async {
     ),
   );
   _db = db;
-  await _seedIfEmpty(db);
   wardrobeItems.value = await _readAll(db);
 }
 
@@ -122,17 +115,6 @@ CREATE TABLE $_table (
   occasions TEXT NOT NULL DEFAULT '[]'
 )
 ''');
-}
-
-Future<void> _seedIfEmpty(Database db) async {
-  final rows = await db.rawQuery('SELECT COUNT(*) FROM $_table');
-  final count = rows.isEmpty ? 0 : rows.first.values.first as int? ?? 0;
-  if (count > 0) return;
-  final batch = db.batch();
-  for (final item in seedWardrobeItems) {
-    batch.insert(_table, _toRow(item));
-  }
-  await batch.commit(noResult: true);
 }
 
 Future<List<WardrobeItem>> _readAll(Database db) async {

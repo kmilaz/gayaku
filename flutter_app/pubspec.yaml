@@ -35,10 +35,16 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   google_fonts: ^6.3.1
+  supabase_flutter: ^2.18.3
   image_picker: ^1.2.4
   tflite_flutter: ^0.12.1
   sqflite: ^2.4.4+2
   path_provider: ^2.1.6
+
+dependency_overrides:
+  # sqlite3 3.5.2 ships release artefacts that no longer match its own pinned
+  # hashes, so `flutter test` fails before running; 3.9.0 publishes matching ones.
+  sqlite3: ^3.9.0
 
 dev_dependencies:
   flutter_test:
@@ -50,7 +56,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
-  sqflite_common_ffi: ^2.4.4
+  sqflite_common_ffi: 2.4.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -64,7 +70,6 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/images/
     - assets/google_fonts/
     - assets/models/
 

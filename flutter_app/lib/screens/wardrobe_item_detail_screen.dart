@@ -3,27 +3,28 @@ import 'package:flutter/material.dart';
 import '../logic/outfit_matcher.dart';
 import '../models/wardrobe.dart';
 import '../state/outfit_store.dart';
+import '../state/wardrobe_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/placeholder_image.dart';
+import '../widgets/note.dart';
 
 /// Detail of one wardrobe item plus the pieces it pairs with.
 ///
-/// UI only: the ranking comes from [outfitFor] (color harmony, formality,
-/// occasion). Nothing is persisted and no API is called.
+/// The ranking comes from [outfitFor] (color harmony, formality, occasion);
+/// saving the suggestion writes a row through the outfit backend.
 class WardrobeItemDetailScreen extends StatelessWidget {
-  const WardrobeItemDetailScreen({
-    super.key,
-    required this.item,
-    this.catalog = seedWardrobeItems,
-  });
+  const WardrobeItemDetailScreen({super.key, required this.item, this.catalog});
 
   final WardrobeItem item;
-  final List<WardrobeItem> catalog;
+
+  /// Partner pieces: the live catalog, or an injected one under test.
+  final List<WardrobeItem>? catalog;
 
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(context);
     final textTheme = Theme.of(context).textTheme;
+    final catalog = this.catalog ?? wardrobeItems.value;
     final matches = outfitFor(item, catalog);
     final alternatives =
         recommendMatches(item, catalog).length - matches.length;
@@ -401,20 +402,26 @@ class _CombineButton extends StatelessWidget {
   final List<MatchSuggestion> matches;
 
   /// Stores the base item plus its recommended partners as a saved combination.
-  void _save(BuildContext context) {
+  Future<void> _save(BuildContext context) async {
     if (matches.isEmpty) {
       showNote(context, 'Belum ada item untuk dikombinasikan');
       return;
     }
-    saveOutfit(
-      SavedOutfit(
-        id: newOutfitId(),
-        name: 'Setelan ${item.name}',
-        itemIds: [item.id, ...matches.map((m) => m.item.id)],
-        threshold: 0.80,
-      ),
-    );
-    showNote(context, 'Kombinasi tersimpan di tab Kombinasi');
+    try {
+      await saveOutfit(
+        SavedOutfit(
+          id: newOutfitId(),
+          name: 'Setelan ${item.name}',
+          itemIds: [item.id, ...matches.map((m) => m.item.id)],
+          threshold: 0.80,
+        ),
+      );
+      if (context.mounted) {
+        showNote(context, 'Kombinasi tersimpan di tab Kombinasi');
+      }
+    } on OutfitException catch (e) {
+      if (context.mounted) showNote(context, e.message);
+    }
   }
 
   @override

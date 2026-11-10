@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
-import 'placeholder_image.dart';
+
+/// Display name, falling back to the local part of the e-mail address.
+String _greetingName(AuthUser? user) {
+  final name = (user?.displayName ?? '').trim();
+  if (name.isNotEmpty) return name;
+  final email = (user?.email ?? '').trim();
+  return email.isEmpty ? '' : email.split('@').first;
+}
 
 /// Time-of-day greeting plus the user name and a notification bell.
 class GreetingHeader extends StatelessWidget {
@@ -34,7 +42,9 @@ class GreetingHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                'Isabella',
+                // The signed-in account, so the greeting matches the profile
+                // screen instead of a demo name.
+                _greetingName(authService.currentUser),
                 style: GoogleFonts.bricolageGrotesque(
                   fontSize: 32,
                   height: 38 / 32,
@@ -44,12 +54,6 @@ class GreetingHeader extends StatelessWidget {
               ),
             ],
           ),
-        ),
-        IconButton(
-          onPressed: () => showComingSoon(context, 'Notifications'),
-          icon: const Icon(Icons.notifications_outlined, size: 22),
-          color: palette.ink,
-          style: IconButton.styleFrom(backgroundColor: palette.surface),
         ),
       ],
     );

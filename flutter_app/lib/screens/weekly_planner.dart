@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/wardrobe.dart';
 import '../navigation.dart';
+import '../state/outfit_store.dart';
+import '../state/planner_store.dart';
+import '../state/wardrobe_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/home_bottom_nav.dart';
+import '../widgets/note.dart';
 import '../widgets/placeholder_image.dart';
 
 DateTime _mondayOf(DateTime date) {
@@ -39,34 +45,34 @@ class _WeeklyPlannerState extends State<WeeklyPlanner> {
   DateTime _weekStart = _mondayOf(DateTime.now());
   int _selectedDay = -1;
   bool _showEmptyDays = true;
-  final Map<DateTime, _PlannedOutfit> _outfits = _savedOutfits;
 
-  static final Map<DateTime, _PlannedOutfit> _savedOutfits = {};
-  static final Set<DateTime> _seededMonths = {};
+  /// The plan as look cards. Rows come from Supabase and are re-rendered when
+  /// the plan, the combinations or the catalog change.
+  Map<DateTime, _PlannedOutfit> get _outfits => _renderPlan(
+    plannerEntries.value,
+    savedOutfits.value,
+    wardrobeItems.value,
+  );
 
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    final month = DateTime(now.year, now.month);
-    if (_seededMonths.add(month)) {
-      _outfits.putIfAbsent(
-        DateTime(now.year, now.month, 12),
-        () => _PlannedOutfit(
-          look: favoriteLooks[0],
-          occasion: 'Coffee with friends',
-          complete: false,
-        ),
-      );
-      _outfits.putIfAbsent(
-        DateTime(now.year, now.month, 13),
-        () => _PlannedOutfit(
-          look: favoriteLooks[1],
-          occasion: 'Office day',
-          complete: false,
-        ),
-      );
-    }
+    plannerEntries.addListener(_refresh);
+    savedOutfits.addListener(_refresh);
+    wardrobeItems.addListener(_refresh);
+    unawaited(loadPlannerFromBackend());
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    plannerEntries.removeListener(_refresh);
+    savedOutfits.removeListener(_refresh);
+    wardrobeItems.removeListener(_refresh);
+    super.dispose();
   }
 
   List<DateTime> get _weekDates =>
@@ -98,21 +104,33 @@ class _WeeklyPlannerState extends State<WeeklyPlanner> {
 
   Future<void> _editOutfit(DateTime date) async {
     final current = _outfits[date];
-    final result = await showDialog<_PlannedOutfit>(
+    final result = await showDialog<PlannerEntry>(
       context: context,
-      builder: (_) => _PlanOutfitDialog(current: current),
+      builder: (_) => _PlanOutfitDialog(day: date, current: current),
     );
-    if (result != null && mounted) {
-      setState(() => _outfits[date] = result);
+    if (result == null || !mounted) return;
+    try {
+      await savePlannerEntry(result);
+    } on OutfitException catch (e) {
+      if (mounted) showNote(context, e.message);
     }
   }
 
-  void _toggleComplete(DateTime date) {
+  Future<void> _toggleComplete(DateTime date) async {
     final outfit = _outfits[date];
     if (outfit == null) return;
-    setState(() {
-      _outfits[date] = outfit.copyWith(complete: !outfit.complete);
-    });
+    try {
+      await savePlannerEntry(
+        PlannerEntry(
+          day: date,
+          outfitId: outfit.outfitId,
+          occasion: outfit.occasion,
+          complete: !outfit.complete,
+        ),
+      );
+    } on OutfitException catch (e) {
+      if (mounted) showNote(context, e.message);
+    }
   }
 
   Future<void> _confirmClearOutfit(DateTime date) async {
@@ -149,8 +167,11 @@ class _WeeklyPlannerState extends State<WeeklyPlanner> {
         ],
       ),
     );
-    if (shouldClear == true && mounted) {
-      setState(() => _outfits.remove(date));
+    if (shouldClear != true || !mounted) return;
+    try {
+      await deletePlannerEntry(date);
+    } on OutfitException catch (e) {
+      if (mounted) showNote(context, e.message);
     }
   }
 
@@ -181,7 +202,7 @@ class _WeeklyPlannerState extends State<WeeklyPlanner> {
               ),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
-                activeThumbColor: palette.actionInk,
+                activeThumbColor: palette.action,
                 title: const Text('Show days without an outfit'),
                 value: _showEmptyDays,
                 onChanged: (value) {
@@ -318,7 +339,7 @@ class _WeeklyPlannerState extends State<WeeklyPlanner> {
                 style: GoogleFonts.inter(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: isSelected ? palette.actionInk : palette.inkMuted,
+                  color: isSelected ? palette.action : palette.inkMuted,
                 ),
               ),
               const SizedBox(height: 3),
@@ -379,8 +400,9 @@ class _WeeklyPlannerState extends State<WeeklyPlanner> {
 }
 
 class _PlanOutfitDialog extends StatefulWidget {
-  const _PlanOutfitDialog({required this.current});
+  const _PlanOutfitDialog({required this.day, required this.current});
 
+  final DateTime day;
   final _PlannedOutfit? current;
 
   @override
@@ -391,12 +413,12 @@ class _PlanOutfitDialogState extends State<_PlanOutfitDialog> {
   late final TextEditingController _occasionController = TextEditingController(
     text: widget.current?.occasion ?? '',
   );
-  Look? _selectedLook;
+  String? _selectedOutfitId;
 
   @override
   void initState() {
     super.initState();
-    _selectedLook = widget.current?.look;
+    _selectedOutfitId = widget.current?.outfitId;
     _occasionController.addListener(_refresh);
   }
 
@@ -444,85 +466,101 @@ class _PlanOutfitDialogState extends State<_PlanOutfitDialog> {
             ),
             const SizedBox(height: 12),
             Expanded(
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  mainAxisExtent: 158,
-                ),
-                itemCount: favoriteLooks.length,
-                itemBuilder: (context, index) {
-                  final look = favoriteLooks[index];
-                  final isSelected = _selectedLook?.id == look.id;
-                  return Card(
-                    clipBehavior: Clip.antiAlias,
-                    shape: RoundedRectangleBorder(
-                      side: BorderSide(
-                        color: isSelected
-                            ? palette.accentInk
-                            : Colors.transparent,
-                        width: 2,
+              child: savedOutfits.value.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Belum ada kombinasi. Simpan satu di tab Kombinasi.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.inter(
+                          fontSize: 13,
+                          color: palette.inkMuted,
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: InkWell(
-                      onTap: () => setState(() {
-                        _selectedLook = look;
-                      }),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            child: Stack(
-                              fit: StackFit.expand,
+                    )
+                  : GridView.builder(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            mainAxisExtent: 158,
+                          ),
+                      itemCount: savedOutfits.value.length,
+                      itemBuilder: (context, index) {
+                        final outfit = savedOutfits.value[index];
+                        final look = lookFromOutfit(
+                          outfit,
+                          wardrobeItems.value,
+                        );
+                        final isSelected = _selectedOutfitId == outfit.id;
+                        return Card(
+                          clipBehavior: Clip.antiAlias,
+                          shape: RoundedRectangleBorder(
+                            side: BorderSide(
+                              color: isSelected
+                                  ? palette.accentInk
+                                  : Colors.transparent,
+                              width: 2,
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: InkWell(
+                            onTap: () => setState(() {
+                              _selectedOutfitId = outfit.id;
+                            }),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                PlaceholderImage(
-                                  imagePath: look.imagePath,
-                                  icon: Icons.checkroom_outlined,
-                                ),
-                                if (isSelected)
-                                  Positioned(
-                                    top: 8,
-                                    right: 8,
-                                    child: Icon(
-                                      Icons.check_circle,
-                                      color: palette.accentInk,
-                                      shadows: [
-                                        Shadow(
-                                          color: palette.canvas.withValues(
-                                            alpha: 0.35,
+                                Expanded(
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      PlaceholderImage(
+                                        imagePath: look.imagePath,
+                                        icon: Icons.checkroom_outlined,
+                                      ),
+                                      if (isSelected)
+                                        Positioned(
+                                          top: 8,
+                                          right: 8,
+                                          child: Icon(
+                                            Icons.check_circle,
+                                            color: palette.accentInk,
+                                            shadows: [
+                                              Shadow(
+                                                color: palette.ink.withValues(
+                                                  alpha: 0.35,
+                                                ),
+                                                blurRadius: 5,
+                                              ),
+                                            ],
                                           ),
-                                          blurRadius: 5,
                                         ),
-                                      ],
+                                    ],
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 6,
+                                  ),
+                                  child: Text(
+                                    look.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: palette.ink,
                                     ),
                                   ),
+                                ),
                               ],
                             ),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 6,
-                            ),
-                            child: Text(
-                              look.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: palette.ink,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
           ],
         ),
@@ -538,12 +576,14 @@ class _PlanOutfitDialogState extends State<_PlanOutfitDialog> {
             foregroundColor: palette.onAction,
           ),
           onPressed:
-              _selectedLook == null || _occasionController.text.trim().isEmpty
+              _selectedOutfitId == null ||
+                  _occasionController.text.trim().isEmpty
               ? null
               : () => Navigator.pop(
                   context,
-                  _PlannedOutfit(
-                    look: _selectedLook!,
+                  PlannerEntry(
+                    day: widget.day,
+                    outfitId: _selectedOutfitId!,
                     occasion: _occasionController.text.trim(),
                     complete: current?.complete ?? false,
                   ),
@@ -610,7 +650,7 @@ class _WeekSummary extends StatelessWidget {
               value: plannedCount / 7,
               minHeight: 8,
               backgroundColor: palette.canvas,
-              valueColor: AlwaysStoppedAnimation(palette.actionInk),
+              valueColor: AlwaysStoppedAnimation(palette.action),
             ),
           ),
           const SizedBox(height: 10),
@@ -1048,18 +1088,37 @@ class _EmptyDayCard extends StatelessWidget {
 
 class _PlannedOutfit {
   const _PlannedOutfit({
+    required this.outfitId,
     required this.look,
     required this.occasion,
     required this.complete,
   });
 
+  /// `outfit_looks.id`, the row the plan points at.
+  final String outfitId;
   final Look look;
   final String occasion;
   final bool complete;
+}
 
-  _PlannedOutfit copyWith({bool? complete}) => _PlannedOutfit(
-    look: look,
-    occasion: occasion,
-    complete: complete ?? this.complete,
-  );
+/// Joins planner rows with the combinations they point at. A row whose
+/// combination is gone (or not loaded yet) is skipped, not faked.
+Map<DateTime, _PlannedOutfit> _renderPlan(
+  Map<DateTime, PlannerEntry> entries,
+  List<SavedOutfit> outfits,
+  List<WardrobeItem> catalog,
+) {
+  final byId = {for (final outfit in outfits) outfit.id: outfit};
+  final plan = <DateTime, _PlannedOutfit>{};
+  for (final entry in entries.entries) {
+    final outfit = byId[entry.value.outfitId];
+    if (outfit == null) continue;
+    plan[dayKey(entry.key)] = _PlannedOutfit(
+      outfitId: outfit.id,
+      look: lookFromOutfit(outfit, catalog),
+      occasion: entry.value.occasion,
+      complete: entry.value.complete,
+    );
+  }
+  return plan;
 }

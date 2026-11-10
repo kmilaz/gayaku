@@ -9,6 +9,8 @@ import 'package:flutter_app/state/outfit_store.dart';
 import 'package:flutter_app/state/wardrobe_store.dart';
 import 'package:flutter_app/theme/app_theme.dart';
 
+import 'fixtures.dart';
+
 void main() {
   // The screen reads the real SQLite store, so every test opens one on a temp
   // file through the ffi factory — never a device database.
@@ -22,6 +24,11 @@ void main() {
       factory: databaseFactoryFfi,
       path: '${tempDir.path}/wardrobe.db',
     );
+    // Nothing is seeded any more, so the fixture stands in for the account's
+    // garments.
+    for (final item in wardrobeFixture) {
+      await addWardrobeItem(item);
+    }
   });
 
   tearDown(() async {

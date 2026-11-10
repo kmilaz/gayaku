@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../models/wardrobe.dart';
 import '../screens/wardrobe_item_detail_screen.dart';
+import '../state/wardrobe_store.dart';
 import '../theme/app_theme.dart';
 import 'placeholder_image.dart';
 
 /// Grid tile: photo over `Name` and `Category • Brand`.
 class WardrobeItemCard extends StatelessWidget {
-  const WardrobeItemCard({super.key, required this.item});
+  const WardrobeItemCard({super.key, required this.item, this.catalog});
 
   final WardrobeItem item;
+
+  /// Passed to the detail page so it ranks real partners, not the demo set.
+  final List<WardrobeItem>? catalog;
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +22,10 @@ class WardrobeItemCard extends StatelessWidget {
     return GestureDetector(
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => WardrobeItemDetailScreen(item: item),
+          builder: (_) => WardrobeItemDetailScreen(
+            item: item,
+            catalog: catalog ?? wardrobeItems.value,
+          ),
         ),
       ),
       child: Container(

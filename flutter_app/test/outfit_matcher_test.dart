@@ -4,6 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'package:flutter_app/logic/outfit_matcher.dart';
 import 'package:flutter_app/models/wardrobe.dart';
+
+import 'fixtures.dart';
+
 import 'package:flutter_app/screens/outfit_builder_screen.dart';
 import 'package:flutter_app/screens/wardrobe_item_detail_screen.dart';
 import 'package:flutter_app/state/outfit_store.dart';
@@ -146,7 +149,7 @@ void main() {
 
     test('proposes a swap that lifts the score past the threshold', () {
       final set = [_top, _otherTop, _bottoms];
-      final swaps = improveOutfit(set, seedWardrobeItems, threshold: 0.9);
+      final swaps = improveOutfit(set, wardrobeFixture, threshold: 0.9);
       expect(swaps, isNotEmpty);
 
       final best = swaps.first;
@@ -165,15 +168,15 @@ void main() {
   group('savedOutfits store', () {
     setUp(() => savedOutfits.value = []);
 
-    test('adds, edits in place, and deletes', () {
+    test('adds, edits in place, and deletes', () async {
       // Ids must exist in the catalog: SavedOutfit.itemsOf resolves against it.
       final ids = ['seed-silk-blouse', 'seed-straight-leg-jeans'];
-      saveOutfit(
+      await saveOutfit(
         SavedOutfit(id: 'a', name: 'Kantor', itemIds: ids, threshold: 0.8),
       );
       expect(savedOutfits.value, hasLength(1));
 
-      saveOutfit(
+      await saveOutfit(
         SavedOutfit(
           id: 'a',
           name: 'Kantor Senin',
@@ -187,12 +190,9 @@ void main() {
         reason: 'same id edits in place',
       );
       expect(savedOutfits.value.single.name, 'Kantor Senin');
-      expect(
-        savedOutfits.value.single.itemsOf(seedWardrobeItems),
-        hasLength(2),
-      );
+      expect(savedOutfits.value.single.itemsOf(wardrobeFixture), hasLength(2));
 
-      deleteOutfit('a');
+      await deleteOutfit('a');
       expect(savedOutfits.value, isEmpty);
     });
   });
@@ -211,9 +211,9 @@ void main() {
       'seed-straight-leg-jeans',
     ];
     final set = [
-      for (final id in ids) ...seedWardrobeItems.where((i) => i.id == id),
+      for (final id in ids) ...wardrobeFixture.where((i) => i.id == id),
     ];
-    final swap = improveOutfit(set, seedWardrobeItems, threshold: 0.95).first;
+    final swap = improveOutfit(set, wardrobeFixture, threshold: 0.95).first;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -224,7 +224,7 @@ void main() {
             itemIds: ids,
             threshold: 0.95,
           ),
-          catalog: seedWardrobeItems,
+          catalog: wardrobeFixture,
         ),
       ),
     );
@@ -246,16 +246,16 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: WardrobeItemDetailScreen(
-          item: seedWardrobeItems.first,
-          catalog: seedWardrobeItems,
+          item: wardrobeFixture.first,
+          catalog: wardrobeFixture,
         ),
       ),
     );
 
     expect(find.text('Cocok Dipadukan Dengan'), findsOneWidget);
-    expect(find.text(seedWardrobeItems.first.name), findsWidgets);
+    expect(find.text(wardrobeFixture.first.name), findsWidgets);
 
-    final expected = outfitFor(seedWardrobeItems.first, seedWardrobeItems);
+    final expected = outfitFor(wardrobeFixture.first, wardrobeFixture);
     expect(expected, isNotEmpty);
     for (final match in expected) {
       expect(find.text(match.item.name), findsOneWidget);

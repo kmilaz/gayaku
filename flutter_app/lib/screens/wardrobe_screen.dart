@@ -142,7 +142,22 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
         ],
       ),
     );
-    if (ok ?? false) deleteOutfit(outfit.id);
+    if (ok ?? false) {
+      await _run(() => deleteOutfit(outfit.id));
+    }
+  }
+
+  /// Runs one backend call and shows its message when it fails, so a rejected
+  /// write never leaves the row looking saved.
+  Future<void> _run(Future<void> Function() action) async {
+    try {
+      await action();
+    } on OutfitException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    }
   }
 
   List<WardrobeItem> get _visible {
@@ -316,7 +331,8 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
                   catalog: _catalog,
                   onEdit: () => _openBuilder(existing: outfit),
                   onDelete: () => _confirmDelete(outfit),
-                  onToggleFavorite: () => toggleOutfitFavorite(outfit.id),
+                  onToggleFavorite: () =>
+                      _run(() => toggleOutfitFavorite(outfit.id)),
                 ),
                 const SizedBox(height: 12),
               ],

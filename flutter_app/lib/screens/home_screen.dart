@@ -5,7 +5,6 @@ import '../navigation.dart';
 import '../theme/app_theme.dart';
 import '../widgets/greeting_header.dart';
 import '../widgets/home_bottom_nav.dart';
-import '../widgets/occasion_search_bar.dart';
 import '../widgets/quick_actions.dart';
 import '../widgets/recently_added.dart';
 import '../widgets/todays_look_card.dart';
@@ -44,9 +43,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    const TodaysLookCard(),
-                    const SizedBox(height: 16),
-                    const OccasionSearchBar(),
+                    const TodaysLookSection(),
                     const SizedBox(height: 20),
                     QuickActions(
                       onFavoriteTap: () => openNavDestination(

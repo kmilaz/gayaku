@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import 'home_screen.dart';
 
@@ -16,6 +17,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  /// True while the sign-up request is in flight, so a double tap cannot send two.
+  bool _busy = false;
+
+  Future<void> _signUp() async {
+    setState(() => _busy = true);
+    try {
+      final user = await authService.signUp(
+        email: _emailController.text,
+        password: _passwordController.text,
+        displayName: _nameController.text,
+      );
+      if (!mounted) return;
+      if (user == null) {
+        // The project wants the email confirmed first, so there is no session
+        // to open Home with. Say so and go back to Sign In.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Check your email to confirm the account.'),
+          ),
+        );
+        Navigator.of(context).pop();
+        return;
+      }
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(context);
@@ -25,9 +61,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
         children: [
           // 1. Header Bagian Atas
           Container(
-            height: MediaQuery.of(context).size.height * 0.35,
+            // A fixed 35% header overflowed on short screens; a min height
+            // lets it grow instead.
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.sizeOf(context).height * 0.35,
+            ),
             width: double.infinity,
-            color: palette.action,
+            // Navy ground: `palette.ink` left the cream copy on near-white.
+            color: palette.canvas,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -56,7 +97,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Text(
                   "Sign up to discover amazing things near around you.",
                   style: TextStyle(
-                    color: palette.onAction.withValues(alpha: 0.8),
+                    color: palette.onAction.withValues(alpha: 0.7),
                     fontSize: 13,
                     height: 18 / 13,
                   ),
@@ -174,15 +215,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                       // Tombol Sign Up
                       ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (_) => const HomeScreen(),
-                            ),
-                          );
-                        },
+                        onPressed: _busy ? null : _signUp,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: palette.action,
+                          foregroundColor: palette.onAction,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(24),

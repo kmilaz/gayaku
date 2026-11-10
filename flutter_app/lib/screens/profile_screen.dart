@@ -1,7 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../navigation.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/home_bottom_nav.dart';
 import 'login_screen.dart';
@@ -14,17 +19,147 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  String _userName = 'Isabella';
+  String _userName = '';
+  String? _photoUrl;
+  bool _isUploadingPhoto = false;
 
-  // State sederhana untuk contoh pengaturan
-  bool _darkMode = false;
-  String _selectedLanguage = 'Indonesia';
-  bool _pushNotif = true;
-  bool _dailyReminder = false;
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  // --- AMBIL DATA PROFIL DARI SUPABASE ---
+  Future<void> _loadUserProfile() async {
+    final user = authService.currentUser;
+    if (user == null) return;
+
+    setState(() {
+      _userName = user.displayName.trim().isNotEmpty
+          ? user.displayName.trim()
+          : user.email.split('@').first;
+    });
+
+    try {
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select('display_name, photo_url')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (data != null && mounted) {
+        setState(() {
+          if ((data['display_name'] as String?)?.isNotEmpty ?? false) {
+            _userName = data['display_name'];
+          }
+          _photoUrl = data['photo_url'] as String?;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading profile: $e');
+    }
+  }
+
+  // --- FUNGSI UNGGAH FOTO DARI GALERI KE SUPABASE STORAGE ---
+  Future<void> _pickAndUploadPhoto() async {
+    final user = authService.currentUser;
+    if (user == null) return;
+
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery, // Mengambil foto dari Galeri HP
+        imageQuality: 80,
+      );
+
+      if (pickedFile == null) return;
+
+      setState(() => _isUploadingPhoto = true);
+      _showSnackBar('Mengunggah foto profil...');
+
+      final file = File(pickedFile.path);
+      final fileExt = pickedFile.path.split('.').last;
+      final filePath = '${user.id}/avatar.$fileExt';
+
+      final supabase = Supabase.instance.client;
+
+      // 1. Upload ke Storage Bucket 'avatars'
+      await supabase.storage
+          .from('avatars')
+          .upload(filePath, file, fileOptions: const FileOptions(upsert: true));
+
+      // 2. Ambil Public URL
+      final imageUrl = supabase.storage.from('avatars').getPublicUrl(filePath);
+
+      // 3. Simpan URL ke Tabel Profiles
+      await supabase
+          .from('profiles')
+          .update({
+            'photo_url': imageUrl,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', user.id);
+
+      if (mounted) {
+        setState(() {
+          _photoUrl = imageUrl;
+          _isUploadingPhoto = false;
+        });
+        _showSnackBar('Foto profil berhasil diperbarui!');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploadingPhoto = false);
+        _showSnackBar('Gagal mengunggah foto profil.');
+      }
+    }
+  }
 
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
+  }
+
+  // Widget Tampilan Avatar (Foto Profil / Inisial Nama)
+  Widget _buildAvatarWidget(
+    AppPalette palette, {
+    double size = 72,
+    double fontSize = 32,
+  }) {
+    if (_isUploadingPhoto) {
+      return SizedBox(
+        width: size,
+        height: size,
+        child: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: palette.surface,
+        image: (_photoUrl != null && _photoUrl!.isNotEmpty)
+            ? DecorationImage(
+                image: NetworkImage(_photoUrl!),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      child: (_photoUrl == null || _photoUrl!.isEmpty)
+          ? Center(
+              child: Text(
+                _userName.isNotEmpty ? _userName[0].toUpperCase() : 'I',
+                style: GoogleFonts.bricolageGrotesque(
+                  fontSize: fontSize,
+                  color: palette.accentInk,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            )
+          : null,
     );
   }
 
@@ -65,33 +200,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Center(
                 child: Stack(
                   children: [
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: palette.surface,
-                      ),
-                      child: Center(
-                        child: Text(
-                          _userName.isNotEmpty
-                              ? _userName[0].toUpperCase()
-                              : 'I',
-                          style: GoogleFonts.bricolageGrotesque(
-                            fontSize: 36,
-                            color: palette.accentInk,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
+                    _buildAvatarWidget(palette, size: 80, fontSize: 36),
                     Positioned(
                       bottom: 0,
                       right: 0,
                       child: GestureDetector(
-                        onTap: () {
+                        onTap: () async {
                           Navigator.pop(modalContext);
-                          _showSnackBar('Pilih foto dari galeri...');
+                          await _pickAndUploadPhoto();
                         },
                         child: Container(
                           padding: const EdgeInsets.all(6),
@@ -150,14 +266,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     elevation: 0,
                   ),
-                  onPressed: () {
-                    setState(() {
-                      if (nameController.text.trim().isNotEmpty) {
-                        _userName = nameController.text.trim();
-                      }
-                    });
-                    Navigator.pop(modalContext);
-                    _showSnackBar('Profil berhasil diperbarui!');
+                  onPressed: () async {
+                    final name = nameController.text.trim();
+                    if (name.isEmpty) {
+                      Navigator.pop(modalContext);
+                      return;
+                    }
+                    try {
+                      final updated = await authService.updateDisplayName(name);
+                      if (!mounted || !modalContext.mounted) return;
+                      setState(() => _userName = updated.displayName);
+                      Navigator.pop(modalContext);
+                      _showSnackBar('Profil berhasil diperbarui!');
+                    } catch (_) {
+                      if (!modalContext.mounted) return;
+                      _showSnackBar('Gagal menyimpan profil.');
+                    }
                   },
                   child: const Text(
                     'Simpan Perubahan',
@@ -167,83 +291,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ],
           ),
-        );
-      },
-    );
-  }
-
-  // --- MODAL 1: PREFERENCES ---
-  void _showPreferencesBottomSheet(AppPalette palette) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: palette.sheet,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (modalContext) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Preferences',
-                    style: GoogleFonts.bricolageGrotesque(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: palette.ink,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SwitchListTile(
-                    title: Text(
-                      'Mode Gelap',
-                      style: TextStyle(
-                        color: palette.ink,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Mengubah tampilan ke warna gelap',
-                      style: TextStyle(color: palette.inkMuted, fontSize: 12),
-                    ),
-                    value: _darkMode,
-                    activeThumbColor: palette.accent,
-                    onChanged: (val) {
-                      setModalState(() => _darkMode = val);
-                      setState(() => _darkMode = val);
-                    },
-                  ),
-                  const Divider(),
-                  ListTile(
-                    title: Text(
-                      'Bahasa Aplikasi',
-                      style: TextStyle(
-                        color: palette.ink,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    trailing: DropdownButton<String>(
-                      value: _selectedLanguage,
-                      underline: const SizedBox(),
-                      items: ['Indonesia', 'English'].map((lang) {
-                        return DropdownMenuItem(value: lang, child: Text(lang));
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setModalState(() => _selectedLanguage = val);
-                          setState(() => _selectedLanguage = val);
-                        }
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
         );
       },
     );
@@ -280,22 +327,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   style: TextStyle(fontSize: 12, color: palette.inkMuted),
                 ),
                 subtitle: Text(
-                  'isabella@gayaku.id',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: palette.ink,
-                  ),
-                ),
-              ),
-              ListTile(
-                leading: Icon(Icons.phone_outlined, color: palette.accentInk),
-                title: Text(
-                  'Nomor Telepon',
-                  style: TextStyle(fontSize: 12, color: palette.inkMuted),
-                ),
-                subtitle: Text(
-                  '+62 812 3456 7890',
+                  authService.currentUser?.email ?? '',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -318,153 +350,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(modalContext);
-                  _showSnackBar('Fitur Ubah Password dikirim ke Email!');
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // --- MODAL 3: NOTIFICATIONS ---
-  void _showNotificationsBottomSheet(AppPalette palette) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: palette.sheet,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (modalContext) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Notification Settings',
-                    style: GoogleFonts.bricolageGrotesque(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: palette.ink,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SwitchListTile(
-                    title: Text(
-                      'Notifikasi Push',
-                      style: TextStyle(
-                        color: palette.ink,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Terima pengingat dan info promo',
-                      style: TextStyle(color: palette.inkMuted, fontSize: 12),
-                    ),
-                    value: _pushNotif,
-                    activeThumbColor: palette.accent,
-                    onChanged: (val) {
-                      setModalState(() => _pushNotif = val);
-                      setState(() => _pushNotif = val);
-                    },
-                  ),
-                  SwitchListTile(
-                    title: Text(
-                      'Pengingat Outfit Harian',
-                      style: TextStyle(
-                        color: palette.ink,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Rekomendasi pakaian setiap pagi',
-                      style: TextStyle(color: palette.inkMuted, fontSize: 12),
-                    ),
-                    value: _dailyReminder,
-                    activeThumbColor: palette.accent,
-                    onChanged: (val) {
-                      setModalState(() => _dailyReminder = val);
-                      setState(() => _dailyReminder = val);
-                    },
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  // --- MODAL 4: DATA & PRIVACY ---
-  void _showPrivacyBottomSheet(AppPalette palette) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: palette.sheet,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (modalContext) {
-        return Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Data & Privacy',
-                style: GoogleFonts.bricolageGrotesque(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: palette.ink,
-                ),
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading: Icon(
-                  Icons.cleaning_services_outlined,
-                  color: palette.accentInk,
-                ),
-                title: Text(
-                  'Hapus Cache Aplikasi',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: palette.ink,
-                  ),
-                ),
-                subtitle: Text(
-                  'Membebaskan memori tanpa menghapus akun',
-                  style: TextStyle(fontSize: 12, color: palette.inkMuted),
-                ),
-                onTap: () {
-                  Navigator.pop(modalContext);
-                  _showSnackBar('Cache berhasil dibersihkan!');
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: Icon(
-                  Icons.privacy_tip_outlined,
-                  color: palette.accentInk,
-                ),
-                title: Text(
-                  'Kebijakan Privasi',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: palette.ink,
-                  ),
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.pop(modalContext);
-                  _showSnackBar('Membuka dokumen Kebijakan Privasi...');
+                  final email = authService.currentUser?.email ?? '';
+                  if (email.isEmpty) return;
+                  try {
+                    await authService.requestPasswordReset(email);
+                    if (!mounted) return;
+                    _showSnackBar('Tautan ubah kata sandi dikirim ke $email.');
+                  } catch (_) {
+                    if (!mounted) return;
+                    _showSnackBar('Gagal mengirim tautan ubah kata sandi.');
+                  }
                 },
               ),
             ],
@@ -522,27 +419,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         Stack(
                           children: [
-                            Container(
-                              width: 72,
-                              height: 72,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: palette.surface,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  _userName.isNotEmpty
-                                      ? _userName[0].toUpperCase()
-                                      : 'I',
-                                  style: GoogleFonts.bricolageGrotesque(
-                                    fontSize: 32,
-                                    height: 38 / 32,
-                                    color: palette.accentInk,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
+                            _buildAvatarWidget(palette, size: 72, fontSize: 32),
                             Positioned(
                               bottom: 0,
                               right: 0,
@@ -584,7 +461,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Premium Member',
+                              authService.currentUser?.email ?? '',
                               style: TextStyle(
                                 fontSize: 11,
                                 height: 15 / 11,
@@ -597,18 +474,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: 28),
 
-                    // --- SECTION 1: PERSONALIZATION ---
-                    _sectionTitle(palette, 'PERSONALIZATION'),
-                    const SizedBox(height: 12),
-                    _settingsTile(
-                      palette,
-                      icon: Icons.tune,
-                      title: 'Preferences',
-                      onTap: () => _showPreferencesBottomSheet(palette),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // --- SECTION 2: GENERAL ---
+                    // --- SECTION: GENERAL ---
                     _sectionTitle(palette, 'GENERAL'),
                     const SizedBox(height: 12),
                     _settingsTile(
@@ -616,20 +482,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       icon: Icons.person_outline,
                       title: 'Account',
                       onTap: () => _showAccountBottomSheet(palette),
-                    ),
-                    const SizedBox(height: 12),
-                    _settingsTile(
-                      palette,
-                      icon: Icons.notifications_none_outlined,
-                      title: 'Notifications',
-                      onTap: () => _showNotificationsBottomSheet(palette),
-                    ),
-                    const SizedBox(height: 12),
-                    _settingsTile(
-                      palette,
-                      icon: Icons.lock_outline,
-                      title: 'Data & Privacy',
-                      onTap: () => _showPrivacyBottomSheet(palette),
                     ),
                     const SizedBox(height: 36),
 
@@ -650,7 +502,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   child: const Text('Batal'),
                                 ),
                                 TextButton(
-                                  onPressed: () {
+                                  onPressed: () async {
+                                    await authService.signOut();
+                                    if (!context.mounted) return;
                                     Navigator.pop(dialogContext);
                                     Navigator.pushAndRemoveUntil(
                                       context,
@@ -718,11 +572,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String title,
     required VoidCallback onTap,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: palette.sheet,
-        borderRadius: BorderRadius.circular(16),
-      ),
+    return Material(
+      color: palette.sheet,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: Container(

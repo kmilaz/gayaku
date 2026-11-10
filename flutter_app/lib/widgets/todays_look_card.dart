@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../models/wardrobe.dart';
+import '../navigation.dart';
+import '../state/outfit_store.dart';
+import '../state/planner_store.dart';
+import '../state/wardrobe_store.dart';
 import '../theme/app_theme.dart';
 import 'placeholder_image.dart';
 
 /// Featured outfit card with a style-tag pill over the photo and a
 /// decorative check button.
 class TodaysLookCard extends StatelessWidget {
-  const TodaysLookCard({super.key, this.look = todaysLook});
+  const TodaysLookCard({super.key, required this.look});
 
   final Look look;
 
@@ -16,7 +20,7 @@ class TodaysLookCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = AppColors.of(context);
     return GestureDetector(
-      onTap: () => showComingSoon(context, 'Outfit details'),
+      onTap: () => openNavDestination(context, 3),
       child: Card(
         margin: EdgeInsets.zero,
         child: Column(
@@ -61,19 +65,6 @@ class TodaysLookCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Positioned(
-                      bottom: 12,
-                      right: 12,
-                      child: IconButton(
-                        onPressed: () =>
-                            showComingSoon(context, 'Outfit details'),
-                        icon: const Icon(Icons.check, size: 18),
-                        color: palette.onAction,
-                        style: IconButton.styleFrom(
-                          backgroundColor: palette.action,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -106,6 +97,57 @@ class TodaysLookCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Home section: the combination planned for today, or a card that says the
+/// day is still unplanned. No stock photo stands in for a missing plan.
+class TodaysLookSection extends StatelessWidget {
+  const TodaysLookSection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Map<DateTime, PlannerEntry>>(
+      valueListenable: plannerEntries,
+      builder: (context, entries, _) {
+        return ValueListenableBuilder<List<SavedOutfit>>(
+          valueListenable: savedOutfits,
+          builder: (context, outfits, _) {
+            final entry = entries[dayKey(DateTime.now())];
+            final match = outfits.where((o) => o.id == entry?.outfitId);
+            if (match.isEmpty) return const _NoPlanCard();
+            return ValueListenableBuilder<List<WardrobeItem>>(
+              valueListenable: wardrobeItems,
+              builder: (context, catalog, _) =>
+                  TodaysLookCard(look: lookFromOutfit(match.single, catalog)),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _NoPlanCard extends StatelessWidget {
+  const _NoPlanCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppColors.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: palette.sheet,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      // The section header above already says "Today's Look"; the card only
+      // carries the empty state.
+      child: Text(
+        'Belum ada rencana untuk hari ini.',
+        style: GoogleFonts.inter(fontSize: 13, color: palette.inkMuted),
       ),
     );
   }

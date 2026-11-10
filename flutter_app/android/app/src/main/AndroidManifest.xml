@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The wardrobe syncs with Supabase, so release builds need network. The
+         ML pipeline itself still runs on-device: ADR-0001 forbids a server for
+         inference, not a database for the rows. image_picker and tflite_flutter
+         add the storage/phone-state permissions. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="flutter_app"
         android:name="${applicationName}"

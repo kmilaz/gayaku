@@ -1,66 +1,70 @@
 import 'package:flutter/foundation.dart';
 
-import '../models/wardrobe.dart';
+import '../logic/ids.dart';
+import '../models/outfit.dart';
+import '../services/outfit_service.dart';
 
-/// A user-built combination of items, kept in memory for the session.
-///
-/// ponytail: no persistence — swap the notifier for Supabase/REST when the
-/// backend lands (proposal §6.1). The screen only talks to this store.
-class SavedOutfit {
-  SavedOutfit({
-    required this.id,
-    required this.name,
-    required this.itemIds,
-    required this.threshold,
-    this.favorite = false,
-  });
+export '../models/outfit.dart' show SavedOutfit, PlannerEntry, lookFromOutfit;
+export '../services/outfit_service.dart'
+    show
+        OutfitException,
+        outfitService,
+        plannerService,
+        useOutfitService,
+        usePlannerService;
 
-  final String id;
-  String name;
-
-  /// [WardrobeItem.id]s, in slot order. Ids — not names — so renaming a
-  /// garment keeps every combination that contains it intact
-  /// (docs/adr/0004-sqlite-ids.md).
-  List<String> itemIds;
-
-  /// Minimum match percent the user wants, 0..1.
-  double threshold;
-
-  /// Favourites sort first in the wardrobe's Kombinasi tab.
-  bool favorite;
-
-  /// Resolves [itemIds] against [catalog], dropping ids that no longer exist.
-  List<WardrobeItem> itemsOf(List<WardrobeItem> catalog) => [
-    for (final id in itemIds) ...catalog.where((i) => i.id == id),
-  ];
-}
-
-/// Every saved combination, newest first. Listen to it with
-/// [ValueListenableBuilder] to rebuild on add/edit/delete.
+/// Every saved combination, newest first. The rows live in Supabase
+/// (`outfit_looks`); this notifier is the in-memory copy the screens read.
 final savedOutfits = ValueNotifier<List<SavedOutfit>>([]);
 
-String newOutfitId() => DateTime.now().microsecondsSinceEpoch.toString();
+/// Ids are uuid v4 so the same value works as a Postgres primary key and as a
+/// local key — no second identity scheme.
+String newOutfitId() => newWardrobeItemId();
 
-void saveOutfit(SavedOutfit outfit) {
+/// Replaces the list with the owner's rows. A failed fetch keeps whatever the
+/// screen already shows instead of blanking it.
+Future<void> loadOutfitsFromBackend() async {
+  try {
+    savedOutfits.value = await outfitService.outfits();
+  } catch (_) {
+    // Offline, signed out, or the migration has not run yet.
+  }
+}
+
+/// Backend first, then the notifier: a combination the backend rejected must
+/// not look saved.
+Future<void> saveOutfit(SavedOutfit outfit) async {
+  final stored = await outfitService.save(outfit);
   final next = [...savedOutfits.value];
-  final at = next.indexWhere((o) => o.id == outfit.id);
+  final at = next.indexWhere((o) => o.id == stored.id);
   if (at == -1) {
-    next.insert(0, outfit);
+    next.insert(0, stored);
   } else {
-    next[at] = outfit;
+    next[at] = stored;
   }
   savedOutfits.value = next;
 }
 
-void deleteOutfit(String id) {
-  savedOutfits.value = savedOutfits.value.where((o) => o.id != id).toList();
+Future<void> deleteOutfit(String id) async {
+  await outfitService.remove(id);
+  savedOutfits.value = savedOutfits.value
+      .where((outfit) => outfit.id != id)
+      .toList();
 }
 
-/// Flips the favourite flag of one combination and re-notifies listeners.
-void toggleOutfitFavorite(String id) {
-  final next = [...savedOutfits.value];
-  final at = next.indexWhere((o) => o.id == id);
-  if (at == -1) return;
-  next[at].favorite = !next[at].favorite;
-  savedOutfits.value = next;
+/// Flips the favourite flag and re-notifies listeners.
+Future<void> toggleOutfitFavorite(String id) async {
+  final match = savedOutfits.value.where((outfit) => outfit.id == id);
+  if (match.isEmpty) return;
+  final outfit = match.single;
+  await saveOutfit(
+    SavedOutfit(
+      id: outfit.id,
+      name: outfit.name,
+      itemIds: outfit.itemIds,
+      threshold: outfit.threshold,
+      favorite: !outfit.favorite,
+      createdAt: outfit.createdAt,
+    ),
+  );
 }

@@ -6,6 +6,7 @@ import '../state/outfit_store.dart';
 import '../state/wardrobe_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/placeholder_image.dart';
+import '../widgets/note.dart';
 
 /// Build or edit one combination by hand, slot per slot.
 ///
@@ -89,22 +90,28 @@ class _OutfitBuilderScreenState extends State<OutfitBuilderScreen> {
     });
   }
 
-  void _save() {
+  Future<void> _save() async {
     final name = _name.text.trim();
     if (_picked.length < 2) {
       showNote(context, 'Pilih minimal 2 item dulu');
       return;
     }
-    saveOutfit(
-      SavedOutfit(
-        id: widget.existing?.id ?? newOutfitId(),
-        name: name.isEmpty ? 'Kombinasi Baru' : name,
-        itemIds: _picked.map((i) => i.id).toList(),
-        threshold: _threshold,
-        favorite: widget.existing?.favorite ?? false,
-      ),
-    );
-    Navigator.of(context).pop();
+    try {
+      await saveOutfit(
+        SavedOutfit(
+          id: widget.existing?.id ?? newOutfitId(),
+          name: name.isEmpty ? 'Kombinasi Baru' : name,
+          itemIds: _picked.map((i) => i.id).toList(),
+          threshold: _threshold,
+          favorite: widget.existing?.favorite ?? false,
+          createdAt: widget.existing?.createdAt,
+        ),
+      );
+    } on OutfitException catch (e) {
+      if (mounted) showNote(context, e.message);
+      return;
+    }
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override

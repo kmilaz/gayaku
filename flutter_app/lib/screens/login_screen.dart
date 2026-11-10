@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import 'home_screen.dart';
 import 'register_screen.dart';
@@ -16,6 +17,29 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  /// True while a sign-in request is in flight, so a double tap cannot send two.
+  bool _busy = false;
+
+  Future<void> _signIn() async {
+    setState(() => _busy = true);
+    try {
+      await authService.signIn(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+      if (!mounted) return;
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(context);
@@ -25,9 +49,14 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           // 1. Header Bagian Atas (Espresso Theme)
           Container(
-            height: MediaQuery.of(context).size.height * 0.35,
+            // A fixed 35% header overflowed on short screens; a min height
+            // lets it grow instead.
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.sizeOf(context).height * 0.35,
+            ),
             width: double.infinity,
-            color: palette.action,
+            // Navy ground: `palette.ink` left the cream copy on near-white.
+            color: palette.canvas,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -73,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   "Sign in to discover amazing outfits around you.",
                   style: TextStyle(
-                    color: palette.onAction.withValues(alpha: 0.8),
+                    color: palette.onAction.withValues(alpha: 0.7),
                     fontSize: 13,
                     height: 18 / 13,
                   ),
@@ -161,15 +190,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       // Tombol Sign In
                       ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (_) => const HomeScreen(),
-                            ),
-                          );
-                        },
+                        onPressed: _busy ? null : _signIn,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: palette.action,
+                          foregroundColor: palette.onAction,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(24),
@@ -232,9 +256,14 @@ class _LoginScreenState extends State<LoginScreen> {
                             icon: Icons.g_mobiledata,
                             color: palette.ink,
                             onTap: () {
-                              Navigator.of(context).pushReplacement(
-                                MaterialPageRoute(
-                                  builder: (_) => const HomeScreen(),
+                              // Needs a Google OAuth client + redirect URL in the
+                              // Supabase dashboard; until then say so instead of
+                              // pretending the user is signed in.
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Google Sign-In is not connected yet.',
+                                  ),
                                 ),
                               );
                             },

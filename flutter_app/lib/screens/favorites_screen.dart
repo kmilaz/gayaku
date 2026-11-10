@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../models/wardrobe.dart';
 import '../navigation.dart';
+import '../state/outfit_store.dart';
+import '../state/wardrobe_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/home_bottom_nav.dart';
 import '../widgets/placeholder_image.dart';
@@ -19,7 +21,31 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   static const filters = ['All', 'Casual', 'Office'];
   var selectedFilter = 'All';
   var selectedSort = LookSortOption.newest;
-  var savedLooks = favoriteLooks;
+
+  /// The combinations the user starred, rendered with the look cards. Empty
+  /// until something is saved: there is no demo shelf any more.
+  List<Look> get savedLooks => [
+    for (final outfit in savedOutfits.value)
+      if (outfit.favorite) lookFromOutfit(outfit, wardrobeItems.value),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    savedOutfits.addListener(_refresh);
+    wardrobeItems.addListener(_refresh);
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    savedOutfits.removeListener(_refresh);
+    wardrobeItems.removeListener(_refresh);
+    super.dispose();
+  }
 
   List<Look> get visibleLooks {
     final filtered = selectedFilter == 'All'
@@ -51,18 +77,20 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     LookSortOption.titleDescending => 'Z-A',
   };
 
-  void removeFavorite(Look look) {
-    setState(() {
-      savedLooks = savedLooks
-          .where((favorite) => favorite.id != look.id)
-          .toList(growable: false);
-    });
+  Future<void> removeFavorite(Look look) async {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('${look.title} removed from favorites'),
         behavior: SnackBarBehavior.floating,
       ),
     );
+    try {
+      await toggleOutfitFavorite(look.id);
+    } on OutfitException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   Future<void> openLook(Look look) async {

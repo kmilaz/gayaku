@@ -62,11 +62,13 @@ class WardrobeItem {
     required this.category,
     this.subcategory,
     required this.imagePath,
+    this.label = '',
     this.brand = '',
     this.colorName = '',
     this.color = const Color(0xFFD3A277),
     this.formality = 3,
     this.occasions = const [],
+    this.confidence,
   });
 
   /// Stable identity: the `wardrobe.db` primary key for a scanned garment,
@@ -82,6 +84,9 @@ class WardrobeItem {
 
   final String imagePath;
 
+  /// Winning scanner class, e.g. `t_shirt`; empty for hand-added items.
+  final String label;
+
   /// Optional maker label, rendered as `Category • Brand` under the name.
   final String brand;
 
@@ -96,113 +101,14 @@ class WardrobeItem {
 
   /// Occasions this item suits: `Formal`, `Kasual`, `Smart-Casual`, `Sport`.
   final List<String> occasions;
+
+  /// Softmax score the scanner reported, 0..1; null when not scanned.
+  final double? confidence;
+
+  /// Short-lived signed URL of the cutout in the private `cutouts` bucket.
 }
 
-/// Demo catalog seeded into `wardrobe.db` on the first open, so a fresh
-/// install is not an empty screen. [id]s are stable across releases.
-const seedWardrobeItems = <WardrobeItem>[
-  WardrobeItem(
-    id: 'seed-silk-blouse',
-    name: 'Silk Blouse',
-    category: 'Tops',
-    brand: 'Zara',
-    colorName: 'Krem',
-    color: Color(0xFFEFE3D0),
-    formality: 4,
-    occasions: ['Formal', 'Smart-Casual'],
-    imagePath: 'assets/images/silk_blouse.png',
-  ),
-  WardrobeItem(
-    id: 'seed-beige-trench',
-    name: 'Beige Trench',
-    category: 'Outerwear',
-    brand: 'Burberry',
-    colorName: 'Beige',
-    color: Color(0xFFD8C3A5),
-    formality: 4,
-    occasions: ['Formal', 'Smart-Casual'],
-    imagePath: 'assets/images/beige_trench.jpg',
-  ),
-  WardrobeItem(
-    id: 'seed-classic-sneakers',
-    name: 'Classic Sneakers',
-    category: 'Shoes',
-    brand: 'Nike',
-    colorName: 'Putih',
-    color: Color(0xFFF5F5F0),
-    formality: 2,
-    occasions: ['Kasual', 'Sport'],
-    imagePath: 'assets/images/classic_sneakers.jpg',
-  ),
-  WardrobeItem(
-    id: 'seed-gold-link-chain',
-    name: 'Gold Link Chain',
-    category: 'Accessories',
-    brand: 'Mejuri',
-    colorName: 'Emas',
-    color: Color(0xFFC9A227),
-    formality: 4,
-    occasions: ['Formal', 'Smart-Casual'],
-    imagePath: 'assets/images/gold_link_chain.jpg',
-  ),
-  WardrobeItem(
-    id: 'seed-straight-leg-jeans',
-    name: 'Straight Leg Jeans',
-    category: 'Bottoms',
-    brand: "Levi's",
-    colorName: 'Biru Denim',
-    color: Color(0xFF3B5A80),
-    formality: 2,
-    occasions: ['Kasual', 'Smart-Casual'],
-    imagePath: 'assets/images/straight_leg_jeans.jpg',
-  ),
-  WardrobeItem(
-    id: 'seed-linen-shirt',
-    name: 'Linen Shirt',
-    category: 'Tops',
-    brand: 'Uniqlo',
-    colorName: 'Putih Gading',
-    color: Color(0xFFF2EDE3),
-    formality: 3,
-    occasions: ['Kasual', 'Smart-Casual'],
-    imagePath: 'assets/images/linen_shirt.jpg',
-  ),
-  WardrobeItem(
-    id: 'seed-pleated-midi-skirt',
-    name: 'Pleated Midi Skirt',
-    category: 'Bottoms',
-    brand: 'COS',
-    colorName: 'Cokelat Tanah',
-    color: Color(0xFF8B5E3C),
-    formality: 4,
-    occasions: ['Formal', 'Smart-Casual'],
-    imagePath: 'assets/images/pleated_midi_skirt.jpg',
-  ),
-  WardrobeItem(
-    id: 'seed-leather-loafers',
-    name: 'Leather Loafers',
-    category: 'Shoes',
-    brand: 'Dr. Martens',
-    colorName: 'Cokelat Tua',
-    color: Color(0xFF5A3A22),
-    formality: 4,
-    occasions: ['Formal', 'Smart-Casual'],
-    imagePath: 'assets/images/leather_loafers.jpg',
-  ),
-  WardrobeItem(
-    id: 'seed-tote-bag-canvas',
-    name: 'Tote Bag Canvas',
-    category: 'Accessories',
-    brand: 'Muji',
-    colorName: 'Abu Muda',
-    color: Color(0xFFBFBCB4),
-    formality: 2,
-    occasions: ['Kasual'],
-    imagePath: 'assets/images/tote_bag_canvas.jpg',
-  ),
-];
-
-/// The five slots a combination is built from, in builder order.
+/// Category slots a combination is built from.
 const wardrobeSlots = <String>[
   'Tops',
   'Bottoms',
@@ -219,108 +125,4 @@ const wardrobeCategories = <String>[
   'Outerwear',
   'Shoes',
   'Accessories',
-];
-
-/// Sample content for the static home screen.
-const todaysLook = Look(
-  id: 'todays-look',
-  title: 'Effortless Linen Dress',
-  subtitle: 'Breezy layers for a warm afternoon out',
-  styleTag: 'Casual Chic',
-  imagePath: 'assets/images/todays_look.png',
-);
-
-const recentItems = <WardrobeItem>[
-  WardrobeItem(
-    id: 'recent-white-sneakers',
-    name: 'White Sneakers',
-    category: 'Shoes',
-    imagePath: 'assets/images/white_sneakers.png',
-  ),
-  WardrobeItem(
-    id: 'recent-gold-chain',
-    name: 'Gold Chain',
-    category: 'Accessories',
-    imagePath: 'assets/images/gold_chain.png',
-  ),
-  WardrobeItem(
-    id: 'recent-silk-blouse',
-    name: 'Silk Blouse',
-    category: 'Tops',
-    imagePath: 'assets/images/silk_blouse.png',
-  ),
-];
-
-/// Saved looks shown on the Favorites screen.
-final favoriteLooks = <Look>[
-  Look(
-    id: 'beige-trench-denim',
-    title: 'Beige Trench & Denim',
-    styleTag: 'Casual Chic',
-    subtitle: 'Perfect for a sunny coffee run.',
-    imagePath: 'assets/images/beige_trench_denim.png',
-    colorHarmony: 94,
-    savedAt: DateTime(2026, 10, 8, 14, 30),
-    items: [
-      LookItem(
-        type: 'Top',
-        name: 'Silk Blouse',
-        imagePath: 'assets/images/silk_blouse.png',
-        icon: 'top',
-      ),
-      LookItem(
-        type: 'Bottom',
-        name: 'Straight Leg Jeans',
-        imagePath: 'assets/images/straight_leg_jeans.jpg',
-        icon: 'bottom',
-      ),
-      LookItem(
-        type: 'Shoes',
-        name: 'Classic Sneakers',
-        imagePath: 'assets/images/white_sneakers.png',
-        icon: 'shoes',
-      ),
-      LookItem(
-        type: 'Accessory',
-        name: 'Gold Link Chain',
-        imagePath: 'assets/images/gold_chain.png',
-        icon: 'accessory',
-      ),
-    ],
-  ),
-  Look(
-    id: 'linen-office-set',
-    title: 'Linen Office Set',
-    styleTag: 'Office',
-    subtitle: 'Polished layers for a focused workday.',
-    imagePath: 'assets/images/linen_office_set.jpg',
-    colorHarmony: 91,
-    savedAt: DateTime(2026, 10, 9, 9, 15),
-    items: [
-      LookItem(
-        type: 'Top',
-        name: 'Linen Shirt',
-        imagePath: 'assets/images/linen_shirt.jpg',
-        icon: 'top',
-      ),
-      LookItem(
-        type: 'Bottom',
-        name: 'Tailored Trousers',
-        imagePath: 'assets/images/tailored_trousers.jpg',
-        icon: 'bottom',
-      ),
-      LookItem(
-        type: 'Shoes',
-        name: 'Leather Loafers',
-        imagePath: 'assets/images/leather_loafers.jpg',
-        icon: 'shoes',
-      ),
-      LookItem(
-        type: 'Accessory',
-        name: 'Minimal Watch',
-        imagePath: 'assets/images/minimal_watch.jpg',
-        icon: 'accessory',
-      ),
-    ],
-  ),
 ];

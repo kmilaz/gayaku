@@ -47,6 +47,24 @@ fired.
 * **Export contract**: `garment_detector.tflite`, 12,767,821 bytes, input `[1,3,640,640]` float32 **NCHW**, output `[1,9,8400]` float32 (4 box coordinates and 5 class scores, no objectness), 256 operators. `scan_pipeline.dart` already packs NCHW through `rgbaToNchwFloats`, so the detector needs no new layout work on the Dart side. The copy produced by the commit run has sha256 `72d2ba68â€¦`; a retrain re-exports different weights, so the hash identifies the file, not the recipe.
 * **A capped tree was enough for a first detector.** 4,030 photographs reached mAP50 0.7081 and cost 35 minutes of T4 time, which is what makes iterating on the Category list affordable at all.
 
+## Measured on flat-lays, which is what the app asks the user for
+
+The detector learned from Fashionpedia, whose photographs are garments worn by people. Run on the
+app's own flat-lay assets, with the same letterbox and the same `[1,9,8400]` decode the app uses
+(`.amp/in/check_detector.py`, `ai-edge-litert`):
+
+| photo | boxes above 0.25 | what survives the same-Category rule |
+|---|---|---|
+| one jacket (`beige_trench.jpg`) | 10, all `Outerwear` on the same spot | 1 item, correct |
+| one pair of shoes (`classic_sneakers.jpg`) | 4, all labelled `Tops` | 1 item, **wrong Category** |
+| one bag (`tote_bag_canvas.jpg`) | **0**; the best score is 0.191, labelled `Tops` | no item at all |
+
+So a flat-lay holding several garments yields one item: the big outerwear scores 0.86-0.89 and
+survives, while the rest fall under the threshold or carry the wrong Category. This is a domain
+gap, not a threshold to tune — lowering the cut-off to 0.15 makes the bag appear as `Tops` at 0.191.
+Fixing it means training the detector on flat-lay photographs, which is a data decision, not a
+parameter.
+
 ## Considered options
 
 * **Keep ADR-0005** (one garment per photo, no detector): the pipeline already works and the classifier is measured, but the product cannot accept a normal photo. Rejected by the owner: it contradicts why YOLO was chosen.

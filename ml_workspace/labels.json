@@ -1242,6 +1242,13 @@
       "dataset": "ryanbadai/clothes-dataset"
     },
     {
+      "label": "Rompi",
+      "category": "Outerwear",
+      "name": "Rompi",
+      "keep": true,
+      "dataset": "detection-datasets/fashionpedia"
+    },
+    {
       "label": "Sweter",
       "category": "Outerwear",
       "name": "Sweter",

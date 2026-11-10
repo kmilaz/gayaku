@@ -24,25 +24,27 @@ the same conversion: https://github.com/PINTO0309/PINTO_model_zoo (061_U-2-Net).
 
 ## `garment_classifier.tflite` — garment classifier
 
-Names the garment inside a box the detector found. **Shipped today is the merged 18-class
-model** (`docs/adr/0008`, `docs/adr/0011`); the 10-class CC0 bootstrap it replaced lives on in
-`ml_workspace/bootstrap/artifacts/` as the previous generation.
+Names the garment inside a box the detector found. **Shipped today is the 12-class
+worn-garment model** (`docs/adr/0012`): it was trained on Fashionpedia item crops, the same
+photographs the detector saw, so both stages agree about what a scan looks like. The 18-class
+merged model (`docs/adr/0008`) it replaced is still in `ml_workspace/yolo/artifacts/` as the
+previous generation.
 
 | | |
 |---|---|
-| Model | Ultralytics YOLOv8n-cls fine-tuned to 18 classes at 224Ã—224 |
+| Model | Ultralytics YOLOv8n-cls fine-tuned to 12 classes at 224×224 |
 | Licence | **AGPL-3.0** — Ultralytics weights trained by us (`docs/adr/0006`); coursework artifact, not for redistribution |
-| Training data | `alexeygrigorev/clothing-dataset-small` (CC0) merged with `ryanbadai/clothes-dataset` by `ml_workspace/scripts/merge_datasets.py`: 9,728 unique photographs, split 7,779 / 957 / 992 (`docs/adr/0008`) |
-| Measured on `test` | top-1 **0.8155**, top-5 0.9808, macro-F1 0.7968 over 992 photographs |
-| Class list | `ml_workspace/yolo/artifacts/classes_merged.json` â€” Blazer, Celana_Panjang, Celana_Pendek, Gaun, Hoodie, Jaket, Jaket_Denim, Jaket_Olahraga, Jeans, Kaos, Kaos_Lengan_Panjang, Kemeja, Mantel, Polo, Rok, Sepatu, Sweter, Topi; the order `flutter_app/lib/logic/garment_labels.dart` mirrors |
-| sha256 | `d0ec7b3514b2572eb79da9a8af06f720951bd8eb57edda8f877d65d4e6d63d4e` |
-| Size | 5,862,976 bytes (5.9 MB) |
-| Input | `[1, 224, 224, 3]` float32, NHWC RGB in `[0, 1]`, ImageNet normalisation baked into the graph |
-| Output | `[1, 18]` float32 softmax |
+| Training data | `detection-datasets/fashionpedia` item boxes cut by `ml_workspace/scripts/fashionpedia_crops.py`: 22,719 crops, capped at 2,000 per class, split per photograph 18,157 / 2,286 / 2,276 (`docs/adr/0012`) |
+| Measured on `test` | top-1 **0.6784**, top-5 0.9631, macro-F1 0.6675 over 2,276 crops |
+| Class list | `ml_workspace/yolo/artifacts/crops/classes.json` — Celana_Panjang, Celana_Pendek, Gaun, Jaket, Kaos, Kemeja, Mantel, Rok, Rompi, Sepatu, Sweter, Topi; the order `flutter_app/lib/logic/garment_labels.dart` mirrors |
+| sha256 | `dbc61f21563f90e32b0a896a79a711ac6ee461e235a0cd27fe6135170c9fb81e` |
+| Size | 5,846,659 bytes (5.8 MB) |
+| Input | `[1, 3, 224, 224]` float32, **NCHW** RGB in `[0, 1]`, normalisation baked into the graph; `rgbaToInputFloats` reads the layout off the tensor, so an NHWC export works as well |
+| Output | `[1, 12]` float32 softmax |
 
 Class names are Indonesian because the UI shows them; `garmentLabelCategory` maps each one onto
 one of the five Categories. Swapping this asset and regenerating `garment_labels.dart` must
-happen in the same commit â€” `gen_dart_labels.py` refuses a class list whose length does not
+happen in the same commit — `gen_dart_labels.py` refuses a class list whose length does not
 match the shipped asset's output width.
 
 ## `garment_detector.tflite` — garment detector

@@ -7,8 +7,10 @@
 /// Both models are ordinary `.tflite` files driven through `tflite_flutter`:
 /// - matting: U-2-Net small (`u2netp_320.tflite`), `[1,320,320,3]` NHWC RGB in
 ///   `[0,1]`, first output is the `[1,320,320,1]` mask;
-/// - classifier: our own export, `[1,224,224,3]` NHWC RGB in `[0,1]` with
-///   normalisation baked in, softmax output in `garmentCategories` order.
+/// - classifier: our own export, a square 224 RGB image in `[0,1]` with
+///   normalisation baked in and a softmax output in `garmentCategories` order.
+///   `onnx2tf` exports it NHWC and Ultralytics' LiteRT export NCHW; the shape
+///   is read off the tensor, so either works.
 library;
 
 import 'dart:async';

@@ -129,10 +129,12 @@ def check_model(model_path: Path, classes: list[str]) -> None:
             "shipped export (--classes ...), or swap the asset in the same commit"
         )
     geometry = record["inputs"][0]["shape"]
-    if geometry != [1, 224, 224, 3]:
+    # The Dart side accepts either layout (`rgbaToInputFloats` reads it off the tensor), and
+    # exporters disagree: onnx2tf writes NHWC, Ultralytics' LiteRT export writes NCHW.
+    if geometry not in ([1, 224, 224, 3], [1, 3, 224, 224]):
         print(
             f"gen_dart_labels: warning: {model_path} takes input {geometry}, but the scanner "
-            "contract is [1, 224, 224, 3]; the Dart side asserts that shape"
+            "contract is a square 224 RGB image in NHWC or NCHW; the Dart side refuses this"
         )
     print(f"gen_dart_labels: {model_path.name} scores {width} classes, matching the class list")
 

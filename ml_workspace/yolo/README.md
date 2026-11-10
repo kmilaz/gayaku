@@ -23,6 +23,7 @@ apply: the notebook reuses this repository's scripts where it can, writes everyt
 | --- | --- | --- |
 | `fashion_classifier_yolov8.ipynb` | yes | the Colab notebook for the catalogue (no stored outputs; run it top to bottom) |
 | `kaggle_merged_dataset.ipynb` | yes | the Kaggle notebook for the 18-class merged set: merge, train, evaluate, export (no stored outputs) |
+| `kaggle_crops_classifier.ipynb` | yes | the Kaggle notebook for the 12-class worn-garment set: cut crops from Fashionpedia, train, measure per class, export (no stored outputs) |
 | `dataset/` | no | the ultralytics ImageFolder: `{train,val,test}/<Label>/…`, **symlinks** into the catalogue or the CC0 clone |
 | `runs/` | no | ultralytics training and validation output, including `weights/best.pt` |
 | `artifacts/` | partly | `classes.json`, `classes_merged.json`, `merged_dataset.json`, `report.md`, the CSVs and the confusion-matrix PNGs are worth committing; `*.tflite`, `*.pt` and the zip are ignored |

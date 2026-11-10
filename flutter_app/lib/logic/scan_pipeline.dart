@@ -45,6 +45,11 @@ const detectorAttributes = 4 + detectorClassCount;
 /// Starting values from the detection contract, not a sweep on real photographs yet: the
 /// contract keeps both marked pending until they are measured on a phone (`docs/multi-item-scan.md`).
 const detectorScoreThreshold = 0.25;
+
+/// Two boxes of the same Category overlapping more than this are the same garment.
+///
+/// Set from a measurement, not a round number: on a seated person the model produced two
+/// `Bottoms` boxes over the same lap at IoU 0.79, and both reached the review screen.
 const detectorDuplicateIou = 0.85;
 
 /// Most garments one scan shows; the rest are dropped from the smallest (`docs/multi-item-scan.md`).
@@ -330,13 +335,18 @@ class ScanPipeline {
       );
     }
     final label = garmentCategories[prediction.index];
-    final category = garmentLabelCategory[label];
-    if (category == null) {
+    final fromClassifier = garmentLabelCategory[label];
+    if (fromClassifier == null) {
       throw ScanFailure(
         'Label "$label" belum dipetakan ke Category. Perbarui '
         'ml_workspace/labels.json lalu jalankan ulang generatornya.',
       );
     }
+    // The detector saw the whole photo and boxed one garment; the classifier saw only this
+    // crop. When they disagree the detector wins the Category, because a wrong Category moves
+    // the item to the wrong wardrobe tab and changes the outfit rules, while the classifier's
+    // contribution is the name (`docs/multi-item-scan.md`).
+    final category = detectedCategory ?? fromClassifier;
 
     return ScanResult(
       cutoutPng: cutoutPng,

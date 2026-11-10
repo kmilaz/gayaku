@@ -32,7 +32,7 @@ The mapping onto the five Categories follows `labels.json`, not intuition — `s
 
 ## Result (the first run)
 
-Trained on a Kaggle T4 from the capped tree (`--max-boxes-per-category 2000`, `docs/adr/0010`): 4,030 train
+Trained on a Kaggle T4 from the capped tree (`--max-boxes-per-category 2000`, `docs/adr/0011`): 4,030 train
 photographs and 10,000 boxes, with validation (1,158) and test (2,000) kept whole so the numbers measure
 the model rather than the cap. About 2.5 minutes per epoch at 640 px for 40 epochs; early stopping never
 fired.

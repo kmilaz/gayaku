@@ -1,6 +1,6 @@
 # The classifier trains on the Kaggle product catalogue, and its artifacts stay coursework-only
 
-**Status**: superseded as the classifier's final training set by ADR-0008 (the merged 18 classes) and ADR-0010 (that classifier behind a detector). The coursework-only licence posture below still applies to whatever ships.
+**Status**: superseded as the classifier's final training set by ADR-0008 (the merged 18 classes) and ADR-0011 (that classifier behind a detector). The coursework-only licence posture below still applies to whatever ships.
 
 Training data is the Kaggle *Fashion Product Images* dataset (`paramaggarwal`), used at high resolution: its `articleType` column supplies 141 fine labels (`Tshirts` 7065, `Shirts` 3212, `Jeans` 602, `Jackets` 258, …) that we map down to the five Categories, and its white-background catalogue framing resembles what the classifier sees after the cutout step. The dataset's MIT tag is the uploader's claim over their labels; the photographs are third-party catalogue photography they do not own. The trained weights and any build containing them are therefore coursework artifacts — not redistributed, not shipped commercially.
 

@@ -32,7 +32,7 @@ yang dilihat model sama dengan bentuk saat latihan (ADR-0005).
 | Inferensi di perangkat, bukan server | demo tidak bergantung jaringan; tidak ada citra yang diunggah | `docs/adr/0001` |
 | Model dipilih dengan mata terbuka soal lisensi | matting `u2netp` Apache-2.0; pengklasifikasi YOLOv8-cls Ultralytics berlisensi AGPL-3.0 dan dipakai karena tidak ada alternatif permisif yang setara (`SegFormer-clothes` non-komersial NVIDIA, `RMBG-2.0` CC BY-NC, bobot `isnet-general-use` tidak pernah dilisensikan, `xuebinqin/DIS#150`). Konsekuensinya dicatat di ADR-0006 dan ADR-0007: artefak perkuliahan, tidak dijual, dan repo belum punya berkas `LICENSE` | `docs/adr/0002`, `0006`, `0007` |
 | Matting `u2netp`, klasifikasi dilatih sendiri | model matting pra-latih Apache-2.0 dengan bobot 4,58 MB; pengklasifikasi hasil latihan sendiri 6,13 MB, total 10,7 MB | `docs/adr/0002`, `0005` |
-| Satu pakaian per foto di versi yang berjalan, detektor masuk cakupan | matting U-2-Net menggabungkan semua pakaian dalam satu foto jadi satu siluet, jadi versi pertama membatasi satu pakaian per foto; ADR-0009 membuka detektor sebagai tahap kedua yang sedang dilatih, kontrak UI-nya `docs/multi-item-scan.md` | `docs/adr/0005`, `0009`, `0010` |
+| Satu pakaian per foto di versi yang berjalan, detektor masuk cakupan | matting U-2-Net menggabungkan semua pakaian dalam satu foto jadi satu siluet, jadi versi pertama membatasi satu pakaian per foto; ADR-0009 membuka detektor sebagai tahap kedua yang sedang dilatih, kontrak UI-nya `docs/multi-item-scan.md` | `docs/adr/0005`, `0009`, `0011` |
 | Wardrobe disimpan di SQLite dengan id | sebelumnya item dirujuk lewat nama, sehingga mengganti nama menghapus isi kombinasi | `docs/adr/0004` |
 
 Sebutkan juga apa yang **diubah dari proposal**: proposal menulis MediaPipe +
@@ -48,7 +48,7 @@ YOLOv8 untuk beberapa pakaian dalam satu foto sedang dilatih (ADR-0009).
 |---|---|---|
 | `alexeygrigorev/clothing-dataset-small` (CC0-1.0) | 3.068 / 341 / 372 foto, 10 kelas | dipakai sekarang (model *bootstrap*) |
 | `Clothes_Dataset` + CC0, digabung `merge_datasets.py` | 11.281 foto jadi 9.728 unik, 18 kelas; split 7.779 / 957 / 992 | dilatih, belum dipasang di aplikasi (ADR-0008) |
-| Kaggle *Fashion Product Images* | 41.369 dari 44.424 baris masuk ke 80 label terpilih | jalur cadangan, bukan target lagi (ADR-0010) |
+| Kaggle *Fashion Product Images* | 41.369 dari 44.424 baris masuk ke 80 label terpilih | jalur cadangan, bukan target lagi (ADR-0011) |
 
 Catatan lisensi yang harus Anda sampaikan lebih dulu: label MIT pada katalog
 Kaggle adalah klaim pengunggah atas **label**, bukan atas fotonya (foto katalog
@@ -134,7 +134,7 @@ Sampaikan sebelum ditanya:
 
 ## 10. Langkah berikutnya
 
-1. Selesaikan detektor (Fashionpedia) lalu pasang pengklasifikasi 18 kelas sebagai tahap kedua (ADR-0009, ADR-0010).
+1. Selesaikan detektor (Fashionpedia) lalu pasang pengklasifikasi 18 kelas sebagai tahap kedua (ADR-0009, ADR-0011).
 2. Ambang keyakinan atau penolakan "bukan pakaian".
 3. Category `Dress` untuk pakaian satu potong.
 4. Baru setelah itu modul rekomendasi (bobot skor, cuaca, preferensi gaya).
@@ -148,13 +148,13 @@ Sampaikan sebelum ditanya:
 | Butuh internet? | untuk memindai tidak; akun, profil, dan look disinkronkan lewat Supabase, jadi manifes meminta izin INTERNET |
 | Berapa ukuran dan kecepatannya? | 10,7 MB model; latensi belum diukur — sebutkan apa adanya |
 | Bagaimana dievaluasi? | split held-out + confusion matrix + sapuan 16 foto aset + uji di perangkat |
-| Kenapa aksesori salah? | 18 kelas hasil gabungan masih belum memuat tas/jam/kalung; katalog Kaggle memuatnya, tapi jalurnya kini cadangan (ADR-0010), jadi ini bahan keputusan kelas berikutnya, bukan janji edisi ini |
+| Kenapa aksesori salah? | 18 kelas hasil gabungan masih belum memuat tas/jam/kalung; katalog Kaggle memuatnya, tapi jalurnya kini cadangan (ADR-0011), jadi ini bahan keputusan kelas berikutnya, bukan janji edisi ini |
 | Kenapa gaun jadi Tops? | hanya ada lima Category (CONTEXT.md); menambah Category adalah keputusan produk |
 | Bisakah pakai banyak pakaian dalam satu foto? | belum rilis — matting masih menggabungkan semuanya jadi satu siluet; detektornya sedang dilatih (ADR-0009), kontrak UI-nya `docs/multi-item-scan.md` |
 
 ## Berkas yang bisa ditunjukkan
 
-- `docs/adr/0001`–`0010` — catatan keputusan beserta alternatif yang ditolak.
+- `docs/adr/0001`–`0011` — catatan keputusan beserta alternatif yang ditolak.
 - `docs/multi-item-scan.md` — kontrak pemindaian banyak pakaian per foto.
 - `ml_workspace/yolo/artifacts/report.md` — akurasi per kelas dan confusion matrix
   model 18 kelas, beserta kompromi labelnya (`merged_dataset.json`).

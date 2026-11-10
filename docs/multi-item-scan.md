@@ -5,7 +5,7 @@ contract, not an implementation: it fixes the data each item carries, the order 
 sees them in, and what happens when a stage fails, so the screen and the pipeline can be
 built separately without drifting.
 
-Decided by ADR-0009 (detection is in scope) and ADR-0010 (the 18-class classifier ships as
+Decided by ADR-0009 (detection is in scope) and ADR-0011 (the 18-class classifier ships as
 the second stage). Numbers marked **pending** come from the detector run and are recorded in
 `ml_workspace/yolo/artifacts/detector/report.md` when it finishes — the detector's own
 `report.md`, kept in that subfolder so it does not overwrite the classifier's. Nothing here

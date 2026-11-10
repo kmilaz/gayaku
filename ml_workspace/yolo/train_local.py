@@ -15,6 +15,9 @@ and `test` (the number to report), and writes the artefacts the app needs.
     # random init instead of the ImageNet checkpoint (worse on 9.7k photographs)
     python ml_workspace/yolo/train_local.py --weights yolov8n-cls.yaml
 
+    # the worn-garment tree: 12 classes cut from Fashionpedia's item boxes (ADR-0012)
+    python ml_workspace/yolo/train_local.py --data ml_workspace/data/crops
+
 Needs `ultralytics` in an interpreter that has torch. Use `ml_workspace/yolo/.venv-train` and keep it
 **isolated** from the system interpreter: mixing anaconda's MKL numpy with torch's OpenMP runtime
 aborts the run with `OMP: Error #15` before the first checkpoint is saved.
@@ -53,6 +56,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import json
 import os
 import shutil
 import sys
@@ -96,6 +100,21 @@ def check_tree(data: Path) -> list[str]:
     print(f"dataset       {data}")
     print(f"classes       {len(classes)} ({', '.join(classes)})")
     return classes or []
+
+
+def dataset_kind(data: Path) -> str:
+    """Which tree this is, so the report describes the data it actually trained on.
+
+    `crops` is the Fashionpedia item-box tree `fashionpedia_crops.py` writes; `merged` is the
+    18-class tree `merge_datasets.py` writes; anything else gets the generic wording.
+    """
+    if (data / "manifest.json").is_file():
+        document = json.loads((data / "manifest.json").read_text(encoding="utf-8"))
+        if "mapping" in document:
+            return "crops"
+    if (data / "merged_dataset.json").is_file():
+        return "merged"
+    return "generic"
 
 
 def split_counts(data: Path, classes: list[str]) -> dict[str, dict[str, int]]:
@@ -392,17 +411,20 @@ def export(best: Path, args: argparse.Namespace, classes: list[str]) -> tuple[Pa
     return target, info
 
 
-def write_classes(path: Path, classes: list[str], args: argparse.Namespace) -> None:
-    import json
-
+def write_classes(path: Path, classes: list[str], args: argparse.Namespace, kind: str) -> None:
+    trees = {
+        "crops": "the fashionpedia_crops.py tree",
+        "merged": "the merge_datasets.py tree",
+        "generic": "the --data tree",
+    }
     path.write_text(
         json.dumps(
             {
                 "version": 1,
-                "dataset": "merged",
+                "dataset": kind,
                 "source": (
-                    f"ml_workspace/yolo/train_local.py: {args.weights} trained on the merge_datasets.py "
-                    f"tree ({len(classes)} classes, imgsz {args.imgsz}, {args.epochs} epochs, "
+                    f"ml_workspace/yolo/train_local.py: {args.weights} trained on {trees[kind]} "
+                    f"({len(classes)} classes, imgsz {args.imgsz}, {args.epochs} epochs, "
                     f"batch {args.batch}, seed {args.seed}); labels in the model's output order"
                 ),
                 "labels": classes,
@@ -422,6 +444,7 @@ def write_report(
     counts: dict,
     measured: dict,
     exported: dict | None,
+    kind: str,
 ) -> None:
     def per_class_table(split: str) -> str:
         rows = measured[split]["per_class"]
@@ -457,14 +480,71 @@ def write_report(
             f"* ONNX source: `{exported['onnx']}`\n"
             f"* class order (`classes.json`): {', '.join(classes)}"
         )
-    report = f"""# yolov8n-cls on the merged set — local CPU run
+    descriptions = {
+        "crops": {
+            "title": "yolov8n-cls on the Fashionpedia crop set",
+            "dataset": "`ml_workspace/data/crops` from `scripts/fashionpedia_crops.py` (`docs/adr/0012`)",
+            "comparison": (
+                "Not comparable with the 18-class merged model (0.8155 top-1 on 992 photographs) or the\n"
+                "shipped 10-class bootstrap model (91.9 %): different classes, different crops, and a\n"
+                "different split."
+            ),
+            "caveats": (
+                "* Every crop carries a 5 % margin around its box, so a person wearing the garment is\n"
+                "  usually in frame. That matches inference, where the crop comes from the detector, so\n"
+                "  the number here is the one the app's second stage sees.\n"
+                "* `Gaun` merges Fashionpedia's `dress` and `jumpsuit`, `Sweter` merges `sweater` and\n"
+                "  `cardigan`, `Mantel` merges `coat` and `cape`. Those are category-level merges, not\n"
+                "  curated classes: a jumpsuit and a gown are one class here.\n"
+                "* `Rompi` is the only class that cannot reach its cap (719 boxes in the whole set), so\n"
+                "  its per-class figures rest on a smaller sample than the other eleven.\n"
+                "* Labels come from Fashionpedia's annotations. A misplaced box is a wrong label, and no\n"
+                "  duplicate detection runs across crops: two boxes of one garment in one photo stay both."
+            ),
+            "licence": (
+                "Trained with Ultralytics YOLOv8 on Fashionpedia item boxes: annotations CC BY 4.0, the\n"
+                "photographs under the terms of the sites they came from (`docs/adr/0012`)."
+            ),
+        },
+        "merged": {
+            "title": "yolov8n-cls on the merged set",
+            "dataset": "`ml_workspace/data/merged` from `scripts/merge_datasets.py` (`docs/adr/0008`)",
+            "comparison": (
+                "Not comparable with the shipped 10-class bootstrap model (91.9 % top-1) or the public\n"
+                "15-class baseline (78.47 % / 0.7803 on a 40 % split): the class counts and splits differ."
+            ),
+            "caveats": (
+                "* `Kaos_Lengan_Panjang` is a mixed class: a spot check of five photographs found three\n"
+                "  knitted sweaters or cardigans and two long-sleeve tees, and CC0's `longsleeve` folder is\n"
+                "  where they came from (`docs/adr/0008`). Its recall is the number to read first.\n"
+                "* CC0's `outwear` is one wide umbrella mapped to `Jaket`, so it competes with `Jaket_Denim`,\n"
+                "  `Jaket_Olahraga`, `Blazer`, `Mantel` and `Sweter`.\n"
+                "* `Polo` and `Kemeja` each lost 51 photographs that were jacket photographs filed under the\n"
+                "  wrong class inside `Clothes_Dataset`; those classes hold wrong examples less often now,\n"
+                "  but they are smaller."
+            ),
+            "licence": (
+                "Trained with Ultralytics YOLOv8 on CC0 photographs plus `ryanbadai/clothes-dataset`."
+            ),
+        },
+        "generic": {
+            "title": "yolov8n-cls",
+            "dataset": f"`{args.data}`",
+            "comparison": "",
+            "caveats": "* None recorded for this tree.",
+            "licence": "Trained with Ultralytics YOLOv8.",
+        },
+    }
+    described = descriptions[kind]
+    comparison = f"{described['comparison']}\n\n" if described["comparison"] else ""
+    report = f"""# {described['title']} — local run
 
 | | |
 | --- | --- |
 | command | `python ml_workspace/yolo/train_local.py --epochs {args.epochs} --batch {args.batch} --name {args.name}` |
-| dataset | `ml_workspace/data/merged` from `scripts/merge_datasets.py` (`docs/adr/0008`) |
+| dataset | {described['dataset']} |
 | weights | `{args.weights}` |
-| training | imgsz {args.imgsz}, {args.epochs} epochs, batch {args.batch}, seed {args.seed}, patience {args.patience}, device cpu |
+| training | imgsz {args.imgsz}, {args.epochs} epochs, batch {args.batch}, seed {args.seed}, patience {args.patience} |
 | classes | {len(classes)} |
 
 ## Measured
@@ -474,10 +554,7 @@ def write_report(
 | val (epoch selection) | {measured['val']['top1']:.4f} | {measured['val']['top5']:.4f} | {measured['val']['accuracy']:.4f} | {measured['val']['macro_f1']:.4f} | {measured['val']['images']} |
 | **test (reported)** | **{measured['test']['top1']:.4f}** | {measured['test']['top5']:.4f} | {measured['test']['accuracy']:.4f} | **{measured['test']['macro_f1']:.4f}** | {measured['test']['images']} |
 
-Not comparable with the shipped 10-class bootstrap model (91.9 % top-1) or the public 15-class
-baseline (78.47 % / 0.7803 on a 40 % split): the class counts and splits differ.
-
-## Per class, split `test`
+{comparison}## Per class, split `test`
 
 | class | precision | recall | f1-score | support |
 | --- | --- | --- | --- | --- |
@@ -501,14 +578,7 @@ baseline (78.47 % / 0.7803 on a 40 % split): the class counts and splits differ.
 
 ## Known data problems
 
-* `Kaos_Lengan_Panjang` is a mixed class: a spot check of five photographs found three knitted
-  sweaters or cardigans and two long-sleeve tees, and CC0's `longsleeve` folder is where they came
-  from (`docs/adr/0008`). Its recall is the number to read first.
-* CC0's `outwear` is one wide umbrella mapped to `Jaket`, so it competes with `Jaket_Denim`,
-  `Jaket_Olahraga`, `Blazer`, `Mantel` and `Sweter`.
-* `Polo` and `Kemeja` each lost 51 photographs that were jacket photographs filed under the wrong
-  class inside `Clothes_Dataset`; those classes hold wrong examples less often now, but they are
-  smaller.
+{described['caveats']}
 
 ## Exported model
 
@@ -516,11 +586,10 @@ baseline (78.47 % / 0.7803 on a 40 % split): the class counts and splits differ.
 
 ## Licence
 
-Trained with Ultralytics YOLOv8 on CC0 photographs plus `ryanbadai/clothes-dataset`. Ultralytics
-states that models trained with their code are AGPL-3.0 by default, and this `.tflite` derives from
-the `{args.weights}` checkpoint: distributing a build that contains it triggers AGPL-3.0's source
-obligation, and this repository has no LICENSE file (`docs/adr/0006`). The Carousell photographs
-are not ours to redistribute (`docs/adr/0007`).
+{described['licence']} Ultralytics states that models trained with their code are AGPL-3.0 by
+default, and this `.tflite` derives from the `{args.weights}` checkpoint: distributing a build that
+contains it triggers AGPL-3.0's source obligation, and this repository has no LICENSE file
+(`docs/adr/0006`). The source photographs are not ours to redistribute (`docs/adr/0007`).
 """
     path.write_text(report, encoding="utf-8")
 
@@ -574,27 +643,29 @@ def main(argv: list[str] | None = None) -> int:
         if args.export_only:
             args.export_only = args.export_only.resolve()
         classes = check_tree(args.data)
+        kind = dataset_kind(args.data)
+        print(f"kind          {kind}")
         counts = split_counts(args.data, classes)
         args.artifacts.mkdir(parents=True, exist_ok=True)
         torch.set_num_threads(args.threads)
         if args.export_only:
-            write_classes(args.artifacts / "classes.json", classes, args)
+            write_classes(args.artifacts / "classes.json", classes, args, kind)
             _, exported = export(args.export_only, args, classes)
             print(f"written       {args.artifacts / 'classes.json'}")
             print(f"sha256        {exported['sha256']}")
             return 0
         model, best = train(args)
         measured = evaluate(best, args, classes, counts)
-        write_classes(args.artifacts / "classes.json", classes, args)
+        write_classes(args.artifacts / "classes.json", classes, args, kind)
         if args.no_export:
-            write_report(args.artifacts / "report.md", args, classes, counts, measured, None)
+            write_report(args.artifacts / "report.md", args, classes, counts, measured, None, kind)
             print("export        skipped (--no-export): ONNX/TFLite not written")
             print(f"written       {args.artifacts / 'classes.json'}")
             print(f"written       {args.artifacts / 'report.md'}")
             print(f"test top-1    {measured['test']['top1']:.4f}   macro-F1 {measured['test']['macro_f1']:.4f}")
             return 0
         _, exported = export(best, args, classes)
-        write_report(args.artifacts / "report.md", args, classes, counts, measured, exported)
+        write_report(args.artifacts / "report.md", args, classes, counts, measured, exported, kind)
         print(f"written       {args.artifacts / 'classes.json'}")
         print(f"written       {args.artifacts / 'report.md'}")
         print(f"test top-1    {measured['test']['top1']:.4f}   macro-F1 {measured['test']['macro_f1']:.4f}")

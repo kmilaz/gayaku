@@ -29,6 +29,27 @@ const mattingInputSize = 320;
 /// Square size the classifier expects.
 const classifierInputSize = 224;
 
+/// Square size the detector expects, and what its output is shaped like.
+///
+/// `garment_detector.tflite` takes `[1,3,640,640]` float32 NCHW and returns `[1,9,8400]`
+/// float32: four box coordinates followed by five Category scores, no objectness term.
+/// The numbers are read from the exported file, not assumed (`docs/adr/0009`).
+const detectorInputSize = 640;
+const detectorClassCount = 5;
+const detectorAnchors = 8400;
+const detectorAttributes = 4 + detectorClassCount;
+
+/// Below this score a box is not worth a crop; above this overlap two boxes of the *same*
+/// Category are the same garment seen twice.
+///
+/// Starting values from the detection contract, not a sweep on real photographs yet: the
+/// contract keeps both marked pending until they are measured on a phone (`docs/multi-item-scan.md`).
+const detectorScoreThreshold = 0.25;
+const detectorDuplicateIou = 0.85;
+
+/// Most garments one scan shows; the rest are dropped from the smallest (`docs/multi-item-scan.md`).
+const maxScanItems = 6;
+
 /// Longest edge of the photo we decode. A 12 MP phone photo costs ~48 MB of
 /// RGBA and buys no accuracy these models can use, so we downscale on ingest.
 const maxDecodeEdge = 1600;
@@ -322,6 +343,131 @@ class ScanPipeline {
 // ---------------------------------------------------------------------------
 // Pure helpers — unit-tested directly, no models needed.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Detector output — pure helpers, unit-tested with synthetic tensors.
+// ---------------------------------------------------------------------------
+
+/// The five Categories the detector's output indices mean, in output order.
+///
+/// Same vocabulary as `CONTEXT.md`, and the same order the conversion script writes into the
+/// model's manifest, so index 0 is always Tops.
+const detectorCategories = [
+  'Tops',
+  'Bottoms',
+  'Outerwear',
+  'Shoes',
+  'Accessories',
+];
+
+/// One garment the detector found, as a rectangle in fractions of the photo (0..1).
+class DetectedBox {
+  const DetectedBox({
+    required this.box,
+    required this.categoryIndex,
+    required this.score,
+  });
+
+  final Rect box;
+
+  /// Index into [detectorCategories].
+  final int categoryIndex;
+  final double score;
+
+  String get category => detectorCategories[categoryIndex];
+
+  double get area => box.width * box.height;
+}
+
+/// Reads the detector's `[9, 8400]` output into boxes, largest first.
+///
+/// Layout read from the exported file: one row per attribute (centre x, centre y, width,
+/// height, then one score per Category), column per anchor, all already normalised and
+/// sigmoid-applied. Boxes below [scoreThreshold] are dropped, and boxes of the *same*
+/// Category overlapping more than [overlapThreshold] collapse to the higher score — a garment
+/// worn under another one is a different Category, so it survives.
+List<DetectedBox> decodeDetectorOutput(
+  Float32List raw, {
+  double scoreThreshold = detectorScoreThreshold,
+  double overlapThreshold = detectorDuplicateIou,
+  int classCount = detectorClassCount,
+  int anchors = detectorAnchors,
+}) {
+  if (raw.length < anchors * (4 + classCount)) {
+    throw ScanFailure(
+      'Output detektor berisi ${raw.length} nilai, diminta ${anchors * (4 + classCount)}.',
+    );
+  }
+
+  final candidates = <DetectedBox>[];
+  for (var anchor = 0; anchor < anchors; anchor++) {
+    var bestClass = -1;
+    var bestScore = 0.0;
+    for (var cls = 0; cls < classCount; cls++) {
+      final score = raw[(4 + cls) * anchors + anchor];
+      if (score > bestScore) {
+        bestScore = score;
+        bestClass = cls;
+      }
+    }
+    if (bestClass < 0 || bestScore < scoreThreshold) continue;
+
+    final centerX = raw[anchor];
+    final centerY = raw[anchors + anchor];
+    final width = raw[anchors * 2 + anchor];
+    final height = raw[anchors * 3 + anchor];
+    if (width <= 0 || height <= 0) continue;
+
+    final left = (centerX - width / 2).clamp(0.0, 1.0);
+    final top = (centerY - height / 2).clamp(0.0, 1.0);
+    final right = (centerX + width / 2).clamp(0.0, 1.0);
+    final bottom = (centerY + height / 2).clamp(0.0, 1.0);
+    if (right - left <= 0 || bottom - top <= 0) continue;
+
+    candidates.add(
+      DetectedBox(
+        box: Rect.fromLTRB(left, top, right, bottom),
+        categoryIndex: bestClass,
+        score: bestScore,
+      ),
+    );
+  }
+
+  candidates.sort((a, b) => b.score.compareTo(a.score));
+  final kept = <DetectedBox>[];
+  for (final candidate in candidates) {
+    var duplicate = false;
+    for (final survivor in kept) {
+      if (survivor.categoryIndex != candidate.categoryIndex) continue;
+      if (boxIou(survivor.box, candidate.box) > overlapThreshold) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) kept.add(candidate);
+  }
+
+  kept.sort((a, b) => b.area.compareTo(a.area));
+  return kept;
+}
+
+/// Intersection over union of two boxes in the same coordinate space.
+double boxIou(Rect a, Rect b) {
+  final overlap = a.intersect(b);
+  if (overlap.width <= 0 || overlap.height <= 0) return 0;
+  final intersection = overlap.width * overlap.height;
+  final union = a.width * a.height + b.width * b.height - intersection;
+  return union <= 0 ? 0 : intersection / union;
+}
+
+/// The boxes one scan shows: largest first, at most [maxItems].
+List<DetectedBox> selectScanBoxes(
+  List<DetectedBox> boxes, {
+  int maxItems = maxScanItems,
+}) {
+  final ordered = [...boxes]..sort((a, b) => b.area.compareTo(a.area));
+  return ordered.take(maxItems).toList(growable: false);
+}
 
 /// RGBA bytes to interleaved NHWC floats in `[0,1]`.
 Float32List rgbaToNhwcFloats(Uint8List rgba, int size) {

@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
@@ -27,6 +28,27 @@ Float32List maskWithBox(int size, int x0, int y0, int x1, int y1) {
     }
   }
   return mask;
+}
+
+/// A detector output tensor of the exported shape, all zeros, with the given anchors filled.
+///
+/// Each entry is `(anchor, centreX, centreY, width, height, scores)` where `scores` maps a
+/// Category index to its score.
+Float32List detectorTensor(
+  List<(int, double, double, double, double, Map<int, double>)> entries,
+) {
+  const attributes = 4 + detectorClassCount;
+  final raw = Float32List(attributes * detectorAnchors);
+  for (final (anchor, cx, cy, w, h, scores) in entries) {
+    raw[anchor] = cx;
+    raw[detectorAnchors + anchor] = cy;
+    raw[detectorAnchors * 2 + anchor] = w;
+    raw[detectorAnchors * 3 + anchor] = h;
+    for (final MapEntry(key: cls, value: score) in scores.entries) {
+      raw[(4 + cls) * detectorAnchors + anchor] = score;
+    }
+  }
+  return raw;
 }
 
 void main() {
@@ -292,6 +314,90 @@ void main() {
         () => outputFloats(Uint8List(4), TensorType.uint8),
         throwsA(isA<ScanFailure>()),
       );
+    });
+  });
+
+  group('decodeDetectorOutput', () {
+    test('keeps boxes above the score threshold and drops the rest', () {
+      final raw = detectorTensor([
+        (0, 0.5, 0.5, 0.4, 0.4, {0: 0.9}),
+        (1, 0.2, 0.2, 0.1, 0.1, {3: 0.05}),
+      ]);
+      final boxes = decodeDetectorOutput(raw);
+      expect(boxes, hasLength(1));
+      expect(boxes.single.category, 'Tops');
+      expect(boxes.single.score, closeTo(0.9, 1e-6));
+      expect(boxes.single.box.left, closeTo(0.3, 1e-6));
+      expect(boxes.single.box.bottom, closeTo(0.7, 1e-6));
+    });
+
+    test('collapses two boxes of the same Category into the higher score', () {
+      final raw = detectorTensor([
+        (0, 0.5, 0.5, 0.4, 0.4, {0: 0.6}),
+        (1, 0.5, 0.5, 0.4, 0.4, {0: 0.9}),
+      ]);
+      final boxes = decodeDetectorOutput(raw);
+      expect(boxes, hasLength(1));
+      expect(boxes.single.score, closeTo(0.9, 1e-6));
+    });
+
+    test(
+      'keeps a contained box of a different Category, because layers are real',
+      () {
+        final raw = detectorTensor([
+          (0, 0.5, 0.5, 0.4, 0.4, {2: 0.8}),
+          (1, 0.5, 0.5, 0.2, 0.2, {0: 0.7}),
+        ]);
+        final boxes = decodeDetectorOutput(raw);
+        expect(boxes.map((box) => box.category), ['Outerwear', 'Tops']);
+      },
+    );
+
+    test('orders by area, largest first', () {
+      final raw = detectorTensor([
+        (0, 0.2, 0.2, 0.1, 0.1, {0: 0.9}),
+        (1, 0.6, 0.6, 0.5, 0.5, {1: 0.5}),
+      ]);
+      final boxes = decodeDetectorOutput(raw);
+      expect(boxes.map((box) => box.category), ['Bottoms', 'Tops']);
+    });
+
+    test('refuses a tensor shorter than the exported contract', () {
+      expect(
+        () => decodeDetectorOutput(Float32List(16)),
+        throwsA(isA<ScanFailure>()),
+      );
+    });
+  });
+
+  group('selectScanBoxes', () {
+    test('keeps the six largest', () {
+      final boxes = [
+        for (var i = 1; i <= 8; i++)
+          DetectedBox(
+            box: Rect.fromLTWH(0, 0, i / 10, i / 10),
+            categoryIndex: 0,
+            score: 0.9,
+          ),
+      ];
+      final selected = selectScanBoxes(boxes);
+      expect(selected, hasLength(maxScanItems));
+      expect(selected.first.box.width, closeTo(0.8, 1e-9));
+      expect(selected.last.box.width, closeTo(0.3, 1e-9));
+    });
+  });
+
+  group('boxIou', () {
+    test('is 1 for the same box and 0 for disjoint boxes', () {
+      const a = Rect.fromLTRB(0, 0, 1, 1);
+      expect(boxIou(a, a), closeTo(1.0, 1e-9));
+      expect(boxIou(a, const Rect.fromLTRB(2, 2, 3, 3)), 0);
+    });
+
+    test('measures partial overlap', () {
+      const a = Rect.fromLTRB(0, 0, 2, 2);
+      const b = Rect.fromLTRB(1, 0, 3, 2);
+      expect(boxIou(a, b), closeTo(2 / 6, 1e-9));
     });
   });
 }

@@ -4,11 +4,11 @@ The Smart Scanner runs its models inside the Flutter app as bundled LiteRT (`.tf
 
 ## Amended 2026-11-09: the manifest now asks for `INTERNET`
 
-Account, profile and saved-look sync run through Supabase, which arrived with `PR #12` and `PR #13`.
-The owner accepted that as a network feature rather than reverting it, so the release manifest declares
-`INTERNET`. This ADR still governs the scanner, and only the scanner: **inference runs from the assets in
-the APK, and a scan never uploads a photograph.** The offline guarantee is now a property of the scanning
-path, not of the manifest.
+The wardrobe and the account live in Supabase, so the release manifest declares `INTERNET`; the reasoning
+and its consequences are in `docs/adr/0010-internet-permission-for-supabase.md`, not repeated here. This ADR
+still governs the scanner, and only the scanner: **inference runs from the assets in the APK, and a scan
+never uploads a photograph.** The offline guarantee is now a property of the scanning path, not of the
+manifest.
 
 ## Consequences
 

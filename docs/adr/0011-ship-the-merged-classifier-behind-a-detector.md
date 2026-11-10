@@ -2,6 +2,8 @@
 
 **Status**: accepted — withdraws ADR-0003's claim that the 80-class catalogue model is the final classifier. Builds on ADR-0008 (the merged 18-class set) and ADR-0009 (detection before classification).
 
+**Amended 2026-11-10**: the classifier that ships is the **12-class worn-garment model** (`docs/adr/0012`), not the 18-class merged one: it is trained on the detector's own Fashionpedia boxes, so both stages learned from the same photographs. Measured on its held-out crops: top-1 0.6784, macro-F1 0.6675 over 2,276 crops. The detector-first structure and every consequence below still hold; read "18 classes" below as "the classifier's class list", which is 12 today (`flutter_app/assets/models/LICENSES.md`).
+
 Three candidate end states were on the table at once: the 80-class catalogue model (ADR-0003), the 18-class merged classifier (ADR-0008), and a detector in front of a classifier (ADR-0009). Two of them pointed at the same app in different shapes, so nobody could say which model deserved the next hour, and the catalogue model had never been trained at all. This ADR settles it.
 
 ## Decision

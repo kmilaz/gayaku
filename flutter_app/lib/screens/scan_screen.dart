@@ -18,6 +18,11 @@ import '../theme/app_theme.dart';
 /// screen without loading real `.tflite` files.
 typedef GarmentScanner = Future<ScanResult> Function(Uint8List photoBytes);
 
+/// Runs the models over one photo and returns every garment the detector found.
+typedef GarmentScannerAll = Future<List<ScanResult>> Function(
+  Uint8List photoBytes,
+);
+
 /// Gets photo bytes from the camera or the gallery.
 typedef PhotoPicker = Future<Uint8List?> Function(ImageSource source);
 
@@ -30,12 +35,17 @@ class ScanScreen extends StatefulWidget {
   const ScanScreen({
     super.key,
     this.scanner,
+    this.scannerAll,
     this.picker,
     this.documentsDirectory,
   });
 
   /// Defaults to the real on-device pipeline.
   final GarmentScanner? scanner;
+
+  /// Preferred over [scanner]: one photo, several garments. [scanner] stays for the
+  /// single-item tests that predate detection.
+  final GarmentScannerAll? scannerAll;
   final PhotoPicker? picker;
 
   /// Where Cutouts are written. Injectable so tests do not need the platform
@@ -51,28 +61,34 @@ class _ScanScreenState extends State<ScanScreen> {
   /// them per scan would add a visible stall to every photo.
   static ScanPipeline? _pipeline;
 
-  final _name = TextEditingController();
   final _picker = ImagePicker();
 
   Uint8List? _photo;
-  ScanResult? _result;
+
+  /// One entry per garment the detector found, in the order the pipeline returned it:
+  /// largest box first (`docs/multi-item-scan.md`).
+  final List<_Draft> _drafts = [];
+  int _index = 0;
   String? _error;
 
-  String _category = wardrobeSlots.first;
-  Color _color = const Color(0xFFD3A277);
-  String _colorName = '';
+  _Draft? get _current =>
+      _drafts.isEmpty ? null : _drafts[_index.clamp(0, _drafts.length - 1)];
 
   @override
   void dispose() {
-    _name.dispose();
+    for (final draft in _drafts) {
+      draft.dispose();
+    }
     super.dispose();
   }
 
-  Future<ScanResult> _scan(Uint8List bytes) async {
-    final injected = widget.scanner;
-    if (injected != null) return injected(bytes);
+  Future<List<ScanResult>> _scan(Uint8List bytes) async {
+    final many = widget.scannerAll;
+    if (many != null) return many(bytes);
+    final single = widget.scanner;
+    if (single != null) return [await single(bytes)];
     final pipeline = _pipeline ??= await ScanPipeline.load();
-    return pipeline.scan(bytes);
+    return pipeline.scanAll(bytes);
   }
 
   Future<Uint8List?> _pick(ImageSource source) async {
@@ -94,7 +110,11 @@ class _ScanScreenState extends State<ScanScreen> {
       if (!mounted) return;
       setState(() {
         _photo = bytes;
-        _result = null;
+        for (final draft in _drafts) {
+          draft.dispose();
+        }
+        _drafts.clear();
+        _index = 0;
         _error = null;
       });
       await _run(bytes);
@@ -107,14 +127,17 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Future<void> _run(Uint8List bytes) async {
     try {
-      final result = await _scan(bytes);
+      final results = await _scan(bytes);
       if (!mounted) return;
       setState(() {
-        _result = result;
-        _category = result.category;
-        _color = result.dominantColor;
-        _colorName = result.colorName;
-        _name.text = result.suggestedName;
+        for (final draft in _drafts) {
+          draft.dispose();
+        }
+        _drafts
+          ..clear()
+          ..addAll(results.map(_Draft.new));
+        _index = 0;
+        _error = null;
       });
     } on ScanFailure catch (failure) {
       _fail(failure.message);
@@ -131,45 +154,52 @@ class _ScanScreenState extends State<ScanScreen> {
     if (!mounted) return;
     setState(() {
       _error = message;
-      _result = null;
+      for (final draft in _drafts) {
+        draft.dispose();
+      }
+      _drafts.clear();
+      _index = 0;
     });
   }
 
+  /// Writes every remaining item: one cutout file and one row each, in the order the
+  /// carousel showed them. Deleting an item first is the way to leave one out
+  /// (`docs/multi-item-scan.md`).
   Future<void> _save() async {
-    final result = _result;
-    if (result == null) return;
-    final name = _name.text.trim().isEmpty
-        ? result.suggestedName
-        : _name.text.trim();
-
+    if (_drafts.isEmpty) return;
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
+    final label = _drafts.length == 1
+        ? _nameOf(_drafts.single)
+        : '${_drafts.length} item';
     try {
-      final id = newWardrobeItemId();
       final directory =
           await (widget.documentsDirectory ??
               getApplicationDocumentsDirectory)();
       final folder = Directory('${directory.path}/garments');
       await folder.create(recursive: true);
-      final cutout = File('${folder.path}/$id.png');
-      await cutout.writeAsBytes(result.cutoutPng);
+      for (final draft in _drafts) {
+        final id = newWardrobeItemId();
+        final cutout = File('${folder.path}/$id.png');
+        await cutout.writeAsBytes(draft.result.cutoutPng);
 
-      await saveWardrobeItem(
-        WardrobeItem(
-          id: id,
-          name: name,
-          category: _category,
-          subcategory: result.label,
-          imagePath: cutout.path,
-          colorName: _colorName,
-          color: _color,
-          formality: defaultFormality(_category),
-          occasions: defaultOccasions(_category),
-        ),
-      );
+        await saveWardrobeItem(
+          WardrobeItem(
+            id: id,
+            name: _nameOf(draft),
+            category: draft.category,
+            subcategory: draft.result.label,
+            imagePath: cutout.path,
+            colorName: draft.colorName,
+            color: draft.color,
+            formality: defaultFormality(draft.category),
+            occasions: defaultOccasions(draft.category),
+          ),
+        );
+      }
       navigator.pop();
       messenger.showSnackBar(
-        SnackBar(content: Text('$name tersimpan di Wardrobe')),
+        SnackBar(content: Text('$label tersimpan di Wardrobe')),
       );
     } on FileSystemException {
       messenger.showSnackBar(
@@ -181,7 +211,14 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
+  String _nameOf(_Draft draft) {
+    final typed = draft.name.text.trim();
+    return typed.isEmpty ? draft.result.suggestedName : typed;
+  }
+
   Future<void> _editCategory() async {
+    final draft = _current;
+    if (draft == null) return;
     final picked = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppColors.of(context).sheet,
@@ -189,13 +226,15 @@ class _ScanScreenState extends State<ScanScreen> {
       builder: (context) => _OptionSheet<String>(
         title: 'Pilih category',
         options: [for (final slot in wardrobeSlots) (label: slot, value: slot)],
-        selected: _category,
+        selected: draft.category,
       ),
     );
-    if (picked != null) setState(() => _category = picked);
+    if (picked != null) setState(() => draft.category = picked);
   }
 
   Future<void> _editColor() async {
+    final draft = _current;
+    if (draft == null) return;
     final picked = await showModalBottomSheet<(String, Color)>(
       context: context,
       backgroundColor: AppColors.of(context).sheet,
@@ -206,22 +245,36 @@ class _ScanScreenState extends State<ScanScreen> {
           for (final (name, color) in colorNames)
             (label: name, value: (name, color)),
         ],
-        selected: (_colorName, _color),
+        selected: (draft.colorName, draft.color),
         swatches: true,
       ),
     );
     if (picked != null) {
       setState(() {
-        _colorName = picked.$1;
-        _color = picked.$2;
+        draft.colorName = picked.$1;
+        draft.color = picked.$2;
       });
     }
+  }
+
+  /// Drops the garment on screen. Only possible before saving: a wrongly named row in the
+  /// wardrobe is worse than one the user threw away.
+  void _deleteCurrent() {
+    final draft = _current;
+    if (draft == null) return;
+    setState(() {
+      _drafts.remove(draft);
+      draft.dispose();
+      if (_index >= _drafts.length) {
+        _index = _drafts.isEmpty ? 0 : _drafts.length - 1;
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(context);
-    final result = _result;
+    final draft = _current;
 
     return Scaffold(
       backgroundColor: palette.canvas,
@@ -238,9 +291,23 @@ class _ScanScreenState extends State<ScanScreen> {
                     const SizedBox(height: 16),
                     _ScanCard(
                       photo: _photo,
-                      cutoutPng: result?.cutoutPng,
-                      status: _status(result),
+                      cutoutPng: draft?.result.cutoutPng,
+                      box: draft?.result.box,
+                      status: _status(),
                     ),
+                    if (draft != null && _drafts.length > 1) ...[
+                      const SizedBox(height: 10),
+                      _CarouselBar(
+                        index: _index,
+                        total: _drafts.length,
+                        onPrevious: _index == 0
+                            ? null
+                            : () => setState(() => _index -= 1),
+                        onNext: _index >= _drafts.length - 1
+                            ? null
+                            : () => setState(() => _index += 1),
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -262,8 +329,12 @@ class _ScanScreenState extends State<ScanScreen> {
                       const SizedBox(height: 12),
                       _ErrorNote(message: _error!),
                     ],
-                    if (result != null) ...[
+                    if (draft != null) ...[
                       const SizedBox(height: 20),
+                      if (draft.flagged) ...[
+                        _FlagNote(name: _nameOf(draft)),
+                        const SizedBox(height: 10),
+                      ],
                       Text(
                         'AI DETECTED DETAILS',
                         style: Theme.of(context).textTheme.labelSmall!.copyWith(
@@ -283,15 +354,15 @@ class _ScanScreenState extends State<ScanScreen> {
                             _DetailRow(
                               icon: Icons.checkroom_outlined,
                               label: 'Category',
-                              value: _category,
+                              value: draft.category,
                               onEdit: _editCategory,
                             ),
                             Divider(height: 1, color: palette.canvas),
                             _DetailRow(
                               icon: Icons.palette_outlined,
                               label: 'Warna',
-                              value: _colorName,
-                              swatch: _color,
+                              value: draft.colorName,
+                              swatch: draft.color,
                               onEdit: _editColor,
                             ),
                           ],
@@ -299,7 +370,7 @@ class _ScanScreenState extends State<ScanScreen> {
                       ),
                       const SizedBox(height: 16),
                       TextField(
-                        controller: _name,
+                        controller: draft.name,
                         style: Theme.of(context).textTheme.bodyMedium,
                         decoration: InputDecoration(
                           labelText: 'Nama item',
@@ -313,17 +384,29 @@ class _ScanScreenState extends State<ScanScreen> {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        'Terdeteksi: ${result.label} • '
-                        '${(result.confidence * 100).round()}% yakin',
+                        'Terdeteksi: ${draft.result.label} • '
+                        '${(draft.result.confidence * 100).round()}% yakin',
                         style: Theme.of(context).textTheme.labelMedium!
                             .copyWith(color: palette.inkMuted),
+                      ),
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: _deleteCurrent,
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          label: const Text('Hapus item ini'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: palette.inkMuted,
+                          ),
+                        ),
                       ),
                     ],
                   ],
                 ),
               ),
             ),
-            if (result != null)
+            if (draft != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                 child: SizedBox(
@@ -331,7 +414,11 @@ class _ScanScreenState extends State<ScanScreen> {
                   child: FilledButton.icon(
                     onPressed: _save,
                     icon: const Icon(Icons.check, size: 18),
-                    label: const Text('Simpan ke Wardrobe'),
+                    label: Text(
+                      _drafts.length == 1
+                          ? 'Simpan ke Wardrobe'
+                          : 'Simpan ${_drafts.length} item',
+                    ),
                     style: FilledButton.styleFrom(
                       backgroundColor: palette.action,
                       foregroundColor: palette.onAction,
@@ -349,9 +436,10 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
-  String _status(ScanResult? result) {
+  String _status() {
     if (_error != null) return 'Pemindaian gagal';
-    if (result != null) return 'Pakaian terdeteksi';
+    if (_drafts.length > 1) return '${_drafts.length} pakaian terdeteksi';
+    if (_drafts.length == 1) return 'Pakaian terdeteksi';
     if (_photo != null) return 'Memindai item...';
     return 'Siap memindai';
   }
@@ -396,16 +484,21 @@ class _ScanCard extends StatelessWidget {
     required this.photo,
     required this.cutoutPng,
     required this.status,
+    this.box,
   });
 
   final Uint8List? photo;
   final Uint8List? cutoutPng;
+
+  /// The garment on screen, in fractions of [photo]. Present once the detector has run;
+  /// the photo stays visible so the user can see which garment the carousel is on.
+  final Rect? box;
   final String status;
 
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(context);
-    final image = cutoutPng ?? photo;
+    final image = box == null ? (cutoutPng ?? photo) : photo;
 
     return Container(
       height: 306,
@@ -427,7 +520,7 @@ class _ScanCard extends StatelessWidget {
                       color: palette.accentInk,
                     ),
                   )
-                : Image.memory(image, fit: BoxFit.cover),
+                : _BoxedPhoto(photo: image, box: box),
           ),
           if (photo != null) const CustomPaint(painter: _CornerGuides()),
           Align(
@@ -702,6 +795,162 @@ class _OptionSheet<T> extends StatelessWidget {
                   title: Text(option.label),
                 );
               },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The photo with the current garment outlined, so a multi-item scan shows which box the
+/// details below belong to.
+class _BoxedPhoto extends StatelessWidget {
+  const _BoxedPhoto({required this.photo, required this.box});
+
+  final Uint8List photo;
+  final Rect? box;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppColors.of(context);
+    final rect = box;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final height = constraints.maxHeight;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.memory(photo, fit: BoxFit.cover),
+            if (rect != null)
+              Positioned(
+                left: rect.left * width,
+                top: rect.top * height,
+                width: rect.width * width,
+                height: rect.height * height,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: palette.accentInk, width: 3),
+                    borderRadius: AppRadius.field,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// One scanned garment plus the edits the user is making before saving.
+class _Draft {
+  _Draft(this.result)
+    : name = TextEditingController(text: result.suggestedName),
+      category = result.category,
+      color = result.dominantColor,
+      colorName = result.colorName;
+
+  final ScanResult result;
+  final TextEditingController name;
+  String category;
+  Color color;
+  String colorName;
+
+  /// Worth a second look: the classifier was unsure, or the detector called it an accessory.
+  ///
+  /// Accessories are flagged whatever the score says, because the detector cannot tell a bag
+  /// from a belt and the class list holds no bag (`docs/multi-item-scan.md`).
+  bool get flagged =>
+      result.confidence < flagConfidenceThreshold ||
+      result.detectedCategory == 'Accessories';
+
+  void dispose() => name.dispose();
+}
+
+/// Provisional, and deliberately conservative: the contract keeps the real threshold pending
+/// until it is measured per class on a phone.
+const flagConfidenceThreshold = 0.6;
+
+/// Previous / next through the scanned garments, with "n of m" between them.
+class _CarouselBar extends StatelessWidget {
+  const _CarouselBar({
+    required this.index,
+    required this.total,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final int index;
+  final int total;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppColors.of(context);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          tooltip: 'Item sebelumnya',
+          onPressed: onPrevious,
+          icon: const Icon(Icons.chevron_left, size: 22),
+          color: palette.ink,
+          style: IconButton.styleFrom(
+            backgroundColor: palette.sheet,
+            minimumSize: const Size(40, 40),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Text(
+            '${index + 1} dari $total',
+            style: Theme.of(context).textTheme.labelMedium!
+                .copyWith(color: palette.inkMuted),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Item berikutnya',
+          onPressed: onNext,
+          icon: const Icon(Icons.chevron_right, size: 22),
+          color: palette.ink,
+          style: IconButton.styleFrom(
+            backgroundColor: palette.sheet,
+            minimumSize: const Size(40, 40),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Says the name may be wrong without blocking the save, per the review contract.
+class _FlagNote extends StatelessWidget {
+  const _FlagNote({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppColors.of(context);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: AppRadius.field,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 18, color: palette.accentInk),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Nama "$name" mungkin belum tepat. Kamu tetap bisa menyimpannya, dan '
+              'mengubah nama atau Category-nya nanti di Wardrobe.',
+              style: Theme.of(context).textTheme.labelMedium!
+                  .copyWith(color: palette.inkMuted),
             ),
           ),
         ],

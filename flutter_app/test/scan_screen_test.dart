@@ -58,6 +58,55 @@ Future<void> openScanner(
   await tester.pumpAndSettle();
 }
 
+/// A scan result with a box, the way the detector produces them.
+ScanResult garment({
+  required String label,
+  required String category,
+  required String name,
+  double confidence = 0.87,
+  String? detectedCategory,
+}) => ScanResult(
+  cutoutPng: onePixelPng,
+  dominantColor: const Color(0xFFC81E28),
+  colorName: 'Merah',
+  label: label,
+  category: category,
+  suggestedName: name,
+  confidence: confidence,
+  box: const Rect.fromLTRB(0.1, 0.1, 0.6, 0.6),
+  detectedCategory: detectedCategory,
+);
+
+/// Same as [openScanner] but injects the list-returning scanner the carousel needs.
+Future<void> openScannerAll(
+  WidgetTester tester, {
+  required Future<List<ScanResult>> Function(Uint8List) scanner,
+  required Directory documents,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ScanScreen(
+                  scannerAll: scanner,
+                  picker: (_) async => onePixelPng,
+                  documentsDirectory: () async => documents,
+                ),
+              ),
+            ),
+            child: const Text('open scanner'),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('open scanner'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
 
@@ -169,5 +218,102 @@ void main() {
       wardrobeItems.value.where((item) => item.subcategory != null),
       isEmpty,
     );
+  });
+
+  testWidgets('a two-garment scan walks a carousel and saves both', (
+    tester,
+  ) async {
+    await openScannerAll(
+      tester,
+      scanner: (_) async => [
+        garment(label: 'Shirts', category: 'Tops', name: 'Kemeja'),
+        garment(
+          label: 'Jeans',
+          category: 'Bottoms',
+          name: 'Jeans',
+          confidence: 0.5,
+        ),
+      ],
+      documents: temp,
+    );
+
+    await tester.tap(find.byTooltip('Pilih dari galeri'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2 pakaian terdeteksi'), findsOneWidget);
+    expect(find.text('1 dari 2'), findsOneWidget);
+    expect(find.text('Kemeja'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Item berikutnya'));
+    await tester.pumpAndSettle();
+    expect(find.text('2 dari 2'), findsOneWidget);
+    expect(find.text('Terdeteksi: Jeans • 50% yakin'), findsOneWidget);
+    // Below the confidence threshold, so the card says the name may be wrong without
+    // blocking the save.
+    expect(find.textContaining('mungkin belum tepat'), findsOneWidget);
+
+    final saveButton = find.widgetWithText(FilledButton, 'Simpan 2 item');
+    await tester.ensureVisible(saveButton);
+    await tester.runAsync(() async {
+      await tester.tap(saveButton);
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (wardrobeItems.value.length < 2 &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    });
+    await tester.pumpAndSettle();
+
+    final saved = wardrobeItems.value.map((item) => item.name).toList();
+    expect(saved, containsAll(<String>['Kemeja', 'Jeans']));
+  });
+
+  testWidgets('an accessory is flagged even when the classifier is sure', (
+    tester,
+  ) async {
+    await openScannerAll(
+      tester,
+      scanner: (_) async => [
+        garment(
+          label: 'Topi',
+          category: 'Accessories',
+          name: 'Topi',
+          confidence: 0.95,
+          detectedCategory: 'Accessories',
+        ),
+      ],
+      documents: temp,
+    );
+
+    await tester.tap(find.byTooltip('Pilih dari galeri'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('mungkin belum tepat'), findsOneWidget);
+    expect(find.text('Simpan ke Wardrobe'), findsOneWidget);
+  });
+
+  testWidgets('deleting an item removes it from the carousel', (tester) async {
+    await openScannerAll(
+      tester,
+      scanner: (_) async => [
+        garment(label: 'Shirts', category: 'Tops', name: 'Kemeja'),
+        garment(label: 'Jeans', category: 'Bottoms', name: 'Jeans'),
+      ],
+      documents: temp,
+    );
+
+    await tester.tap(find.byTooltip('Pilih dari galeri'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 dari 2'), findsOneWidget);
+
+    final deleteButton = find.text('Hapus item ini');
+    await tester.ensureVisible(deleteButton);
+    await tester.tap(deleteButton);
+    await tester.pumpAndSettle();
+
+    // One garment left, so the carousel and its indicator disappear.
+    expect(find.text('Pakaian terdeteksi'), findsOneWidget);
+    expect(find.textContaining('dari 2'), findsNothing);
+    expect(find.text('Jeans'), findsOneWidget);
   });
 }

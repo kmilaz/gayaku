@@ -10,8 +10,9 @@ tanpa bisa menunjukkannya.
 
 Smart Scanner bukan lagi purwarupa: pemisahan latar, klasifikasi pakaian, dan
 pembacaan warna dominan berjalan **di dalam aplikasi (on-device)**. Foto pakaian
-tidak pernah dikirim ke server — aplikasi tidak punya klien HTTP dan manifes
-rilis tidak meminta izin `INTERNET`.
+tidak pernah dikirim ke server. Manifes rilis meminta izin `INTERNET` untuk
+sinkronisasi akun, profil, dan look lewat Supabase — jalur itu terpisah dari
+pemindaian, yang tetap berjalan tanpa jaringan.
 
 ## 2. Alur pipeline (satu slide diagram)
 
@@ -144,7 +145,7 @@ Sampaikan sebelum ditanya:
 |---|---|
 | Kenapa tidak MediaPipe seperti proposal? | ImageSegmenter belum ada binding Flutter; ADR-0002 mencatat alternatif yang ditolak, ADR-0006 alasan memilih YOLOv8-cls untuk klasifikasi |
 | Ini ML asli atau aturan? | pengklasifikasi dilatih sendiri, matting pra-latih, K-Means algoritma klasik |
-| Butuh internet? | tidak; manifes rilis tanpa izin INTERNET |
+| Butuh internet? | untuk memindai tidak; akun, profil, dan look disinkronkan lewat Supabase, jadi manifes meminta izin INTERNET |
 | Berapa ukuran dan kecepatannya? | 10,7 MB model; latensi belum diukur — sebutkan apa adanya |
 | Bagaimana dievaluasi? | split held-out + confusion matrix + sapuan 16 foto aset + uji di perangkat |
 | Kenapa aksesori salah? | 18 kelas hasil gabungan masih belum memuat tas/jam/kalung; katalog Kaggle memuatnya, tapi jalurnya kini cadangan (ADR-0010), jadi ini bahan keputusan kelas berikutnya, bukan janji edisi ini |

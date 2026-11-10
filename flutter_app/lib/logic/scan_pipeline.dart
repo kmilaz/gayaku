@@ -75,6 +75,8 @@ class ScanResult {
     required this.category,
     required this.suggestedName,
     required this.confidence,
+    this.box,
+    this.detectedCategory,
   });
 
   /// PNG with a transparent background — becomes the WardrobeItem's image.
@@ -94,6 +96,17 @@ class ScanResult {
   /// Softmax score of the winning class, 0..1.
   final double confidence;
 
+  /// Where the detector found this garment, in fractions of the photo.
+  ///
+  /// Null on the single-item fallback, where the crop comes from the matte instead.
+  final Rect? box;
+
+  /// The detector's coarse Category, which may disagree with the classifier's [category].
+  ///
+  /// The classifier wins when they do: it saw the cutout, the detector saw the whole photo
+  /// (`docs/multi-item-scan.md`).
+  final String? detectedCategory;
+
   /// Formality the item starts with, from its Category.
   int get formality => defaultFormality(category);
 
@@ -106,10 +119,18 @@ class ScanResult {
 /// Use [load] in the app; construct directly in tests to inject interpreters
 /// pointing at fixture models.
 class ScanPipeline {
-  ScanPipeline({required this.matting, required this.classifier});
+  ScanPipeline({
+    required this.matting,
+    required this.classifier,
+    this.detector,
+  });
 
   final Interpreter matting;
   final Interpreter classifier;
+
+  /// Finds the garments. Optional: a build without the asset falls back to the single-item
+  /// matte-then-classify path, which is what shipped before detection existed.
+  final Interpreter? detector;
 
   /// Loads the bundled models and checks they match the generated label list.
   ///
@@ -122,6 +143,7 @@ class ScanPipeline {
         classifier: await Interpreter.fromAsset(
           'assets/models/garment_classifier.tflite',
         ),
+        detector: await _loadDetector(),
       );
       pipeline.checkContracts();
       return pipeline;
@@ -138,6 +160,19 @@ class ScanPipeline {
   void close() {
     matting.close();
     classifier.close();
+    detector?.close();
+  }
+
+  /// The detector asset is optional by contract, so a missing one means "single-item path"
+  /// rather than a build error. A present but incompatible one still fails [checkContracts].
+  static Future<Interpreter?> _loadDetector() async {
+    try {
+      return await Interpreter.fromAsset(
+        'assets/models/garment_detector.tflite',
+      );
+    } on Object {
+      return null;
+    }
   }
 
   /// Fails loudly rather than mislabelling every garment by one index.
@@ -167,10 +202,67 @@ class ScanPipeline {
         throw ScanFailure('$name bertipe $type, bukan float.');
       }
     }
+
+    final localDetector = detector;
+    if (localDetector == null) return;
+    requireSquareRgbInput(
+      localDetector.getInputTensor(0),
+      detectorInputSize,
+      'detector',
+    );
+    final output = localDetector.getOutputTensor(0).shape;
+    final expected = [1, detectorAttributes, detectorAnchors];
+    if (output.length != 3 ||
+        output[0] != expected[0] ||
+        output[1] != expected[1] ||
+        output[2] != expected[2]) {
+      throw ScanFailure(
+        'Output detektor berbentuk $output, kontraknya $expected. Ekspor ulang '
+        'garment_detector.tflite dari ml_workspace/yolo/.',
+      );
+    }
+    for (final (name, type) in [
+      ('detector input', localDetector.getInputTensor(0).type),
+      ('detector output', localDetector.getOutputTensor(0).type),
+    ]) {
+      if (type != TensorType.float32 && type != TensorType.float16) {
+        throw ScanFailure('$name bertipe $type, bukan float.');
+      }
+    }
   }
 
-  /// Runs the whole pipeline over [photoBytes] (JPEG or PNG).
+  /// Runs the detector, then the per-garment steps, and returns every garment it could
+  /// read. Empty when the detector finds nothing above its score threshold.
+  ///
+  /// Each item costs its own crop, matte and classification pass, which is why the list is
+  /// capped by [maxScanItems] rather than left open-ended.
+  Future<List<ScanResult>> scanAll(Uint8List photoBytes) async {
+    final photo = await _decode(photoBytes, maxEdge: maxDecodeEdge);
+    final boxes = await _detect(photoBytes);
+    final results = <ScanResult>[];
+    for (final detected in selectScanBoxes(boxes)) {
+      final item = await _itemFor(photo, detected.box, detected.category);
+      // One unreadable crop drops that garment, not the scan (`docs/multi-item-scan.md`).
+      if (item != null) results.add(item);
+    }
+    return results;
+  }
+
+  /// Runs the whole pipeline over [photoBytes] (JPEG or PNG) and returns the largest garment.
+  ///
+  /// With a detector this is [scanAll] without the list; without one it is the single-item
+  /// path that shipped before detection.
   Future<ScanResult> scan(Uint8List photoBytes) async {
+    if (detector != null) {
+      final items = await scanAll(photoBytes);
+      if (items.isEmpty) {
+        throw const ScanFailure(
+          'Pakaian tidak terdeteksi. Coba foto ulang dengan latar yang lebih polos.',
+        );
+      }
+      return items.first;
+    }
+
     final photo = await _decode(photoBytes, maxEdge: maxDecodeEdge);
     final mask = await _matte(photoBytes);
     final box = maskBoundingBox(mask, mattingInputSize);
@@ -179,27 +271,57 @@ class ScanPipeline {
         'Pakaian tidak terdeteksi. Coba foto ulang dengan latar yang lebih polos.',
       );
     }
+    final item = await _itemFor(
+      photo,
+      Rect.fromLTRB(box.left, box.top, box.right, box.bottom),
+      null,
+      mask: mask,
+    );
+    if (item == null) {
+      throw const ScanFailure(
+        'Warna pakaian tidak terbaca. Coba foto dengan pencahayaan lebih terang.',
+      );
+    }
+    return item;
+  }
 
-    final crop = cropRgba(photo.rgba, photo.width, photo.height, box);
+  /// One box through crop, matte, colour and classifier. Null when the crop yields nothing
+  /// usable, so a bad box cannot take the rest of the scan down with it.
+  Future<ScanResult?> _itemFor(
+    ({Uint8List rgba, int width, int height}) photo,
+    Rect box,
+    String? detectedCategory, {
+    Float32List? mask,
+  }) async {
+    final crop = cropRgba(photo.rgba, photo.width, photo.height, (
+      left: box.left,
+      top: box.top,
+      right: box.right,
+      bottom: box.bottom,
+    ));
+    final cropPng = await _encodePng(crop.rgba, crop.width, crop.height);
+    final usedMask = mask ?? await _matte(cropPng);
     final cutoutPng = await _encodePng(
       premultipliedCutout(
         crop.rgba,
         crop.width,
         crop.height,
-        mask,
+        usedMask,
         mattingInputSize,
       ),
       crop.width,
       crop.height,
     );
     final dominant = dominantColorFromRgba(
-      garmentPixels(crop.rgba, crop.width, crop.height, mask, mattingInputSize),
+      garmentPixels(
+        crop.rgba,
+        crop.width,
+        crop.height,
+        usedMask,
+        mattingInputSize,
+      ),
     );
-    if (dominant == null) {
-      throw const ScanFailure(
-        'Warna pakaian tidak terbaca. Coba foto dengan pencahayaan lebih terang.',
-      );
-    }
+    if (dominant == null) return null;
 
     final prediction = await _classifyCutout(cutoutPng);
     if (prediction.index >= garmentCategories.length) {
@@ -224,7 +346,42 @@ class ScanPipeline {
       category: category,
       suggestedName: garmentLabelName[label] ?? label,
       confidence: prediction.confidence,
+      box: box,
+      detectedCategory: detectedCategory,
     );
+  }
+
+  /// The detector over a letterboxed copy of the photo, decoded into boxes in photo fractions.
+  Future<List<DetectedBox>> _detect(Uint8List photoBytes) async {
+    final localDetector = detector;
+    if (localDetector == null) return const [];
+
+    final probe = await _decode(photoBytes);
+    final canvas = letterboxDetectorInput(
+      probe.rgba,
+      probe.width,
+      probe.height,
+    );
+    final inputTensor = localDetector.getInputTensor(0);
+    final outputTensor = localDetector.getOutputTensor(0);
+    final sink = Uint8List(outputTensor.numBytes());
+    runModel(
+      localDetector,
+      floatsToInputBytes(
+        rgbaToInputFloats(canvas.rgba, detectorInputSize, inputTensor.shape),
+        inputTensor.type,
+      ),
+      sink,
+    );
+    final boxes = decodeDetectorOutput(outputFloats(sink, outputTensor.type));
+    return [
+      for (final detected in boxes)
+        DetectedBox(
+          box: detectorBoxToPhoto(detected.box, canvas),
+          categoryIndex: detected.categoryIndex,
+          score: detected.score,
+        ),
+    ];
   }
 
   /// Matting mask in `[0,1]`, `mattingInputSize * mattingInputSize` values.
@@ -449,6 +606,75 @@ List<DetectedBox> decodeDetectorOutput(
 
   kept.sort((a, b) => b.area.compareTo(a.area));
   return kept;
+}
+
+/// A 640 px canvas the detector can read, with the photo scaled to fit and centred.
+///
+/// Ultralytics trained on letterboxed images, so squashing the photo to a square would feed
+/// the model a shape it never saw. The padding is what [detectorBoxToPhoto] undoes.
+({
+  Uint8List rgba,
+  int contentLeft,
+  int contentTop,
+  int contentWidth,
+  int contentHeight,
+})
+letterboxDetectorInput(Uint8List rgba, int width, int height) {
+  final scale = detectorInputSize / (width > height ? width : height);
+  final contentWidth = (width * scale).round().clamp(1, detectorInputSize);
+  final contentHeight = (height * scale).round().clamp(1, detectorInputSize);
+  final padLeft = (detectorInputSize - contentWidth) ~/ 2;
+  final padTop = (detectorInputSize - contentHeight) ~/ 2;
+
+  final canvas = Uint8List(detectorInputSize * detectorInputSize * 4);
+  // Ultralytics pads with grey 114; matching it keeps the border neutral instead of bright.
+  for (var i = 0; i < canvas.length; i += 4) {
+    canvas[i] = 114;
+    canvas[i + 1] = 114;
+    canvas[i + 2] = 114;
+    canvas[i + 3] = 255;
+  }
+  for (var y = 0; y < contentHeight; y++) {
+    final sourceY = (y * height) ~/ contentHeight;
+    for (var x = 0; x < contentWidth; x++) {
+      final sourceX = (x * width) ~/ contentWidth;
+      final from = (sourceY * width + sourceX) * 4;
+      final to = ((y + padTop) * detectorInputSize + (x + padLeft)) * 4;
+      canvas[to] = rgba[from];
+      canvas[to + 1] = rgba[from + 1];
+      canvas[to + 2] = rgba[from + 2];
+      canvas[to + 3] = 255;
+    }
+  }
+  return (
+    rgba: canvas,
+    contentLeft: padLeft,
+    contentTop: padTop,
+    contentWidth: contentWidth,
+    contentHeight: contentHeight,
+  );
+}
+
+/// A box in canvas fractions, mapped back onto the photo it was letterboxed from.
+Rect detectorBoxToPhoto(
+  Rect box,
+  ({
+    Uint8List rgba,
+    int contentLeft,
+    int contentTop,
+    int contentWidth,
+    int contentHeight,
+  })
+  canvas,
+) {
+  double map(double value, int offset, int size) =>
+      ((value * detectorInputSize - offset) / size).clamp(0.0, 1.0);
+  return Rect.fromLTRB(
+    map(box.left, canvas.contentLeft, canvas.contentWidth),
+    map(box.top, canvas.contentTop, canvas.contentHeight),
+    map(box.right, canvas.contentLeft, canvas.contentWidth),
+    map(box.bottom, canvas.contentTop, canvas.contentHeight),
+  );
 }
 
 /// Intersection over union of two boxes in the same coordinate space.

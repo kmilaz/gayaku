@@ -400,4 +400,55 @@ void main() {
       expect(boxIou(a, b), closeTo(2 / 6, 1e-9));
     });
   });
+
+  group('letterboxDetectorInput', () {
+    test('pads a wide photo top and bottom and keeps its aspect ratio', () {
+      // 40x20 becomes 640x320 centered in the canvas, so 160 rows of grey above and below.
+      final rgba = Uint8List(40 * 20 * 4);
+      for (var i = 0; i < rgba.length; i += 4) {
+        rgba[i] = 200;
+        rgba[i + 1] = 10;
+        rgba[i + 2] = 10;
+        rgba[i + 3] = 255;
+      }
+      final canvas = letterboxDetectorInput(rgba, 40, 20);
+      expect(canvas.contentWidth, detectorInputSize);
+      expect(canvas.contentHeight, 320);
+      expect(canvas.contentLeft, 0);
+      expect(canvas.contentTop, 160);
+
+      int pixelAt(int x, int y) {
+        final index = (y * detectorInputSize + x) * 4;
+        return canvas.rgba[index];
+      }
+
+      expect(pixelAt(10, 0), 114, reason: 'top padding is grey');
+      expect(pixelAt(10, 159), 114, reason: 'still padding one row above');
+      expect(pixelAt(10, 160), 200, reason: 'first content row');
+      expect(pixelAt(639, 479), 200, reason: 'last content row');
+      expect(pixelAt(10, 480), 114, reason: 'bottom padding');
+    });
+
+    test('maps a canvas box back onto the photo it came from', () {
+      final rgba = Uint8List(40 * 20 * 4);
+      final canvas = letterboxDetectorInput(rgba, 40, 20);
+      // A box covering the whole content area is the whole photo.
+      final full = detectorBoxToPhoto(
+        const Rect.fromLTRB(0, 0.25, 1, 0.75),
+        canvas,
+      );
+      expect(full.left, closeTo(0, 1e-9));
+      expect(full.top, closeTo(0, 1e-9));
+      expect(full.right, closeTo(1, 1e-9));
+      expect(full.bottom, closeTo(1, 1e-9));
+
+      // Half the content height, starting at the content's top edge.
+      final half = detectorBoxToPhoto(
+        const Rect.fromLTRB(0, 0.25, 1, 0.5),
+        canvas,
+      );
+      expect(half.top, closeTo(0, 1e-9));
+      expect(half.bottom, closeTo(0.5, 1e-9));
+    });
+  });
 }

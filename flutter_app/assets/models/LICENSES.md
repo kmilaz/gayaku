@@ -49,3 +49,24 @@ same slot later (`docs/adr/0003`).
   `flutter_app/lib/logic/garment_labels.dart` in the same commit — `gen_dart_labels.py`
   refuses a class list whose length does not match the shipped asset's output width — and
   adding the new sha256 and size here.
+
+## `garment_detector.tflite` — garment detector
+
+Finds the garments in one photo and gives each a coarse Category, before the classifier names
+the crop inside each box (`docs/adr/0009`, `docs/adr/0011`).
+
+| | |
+|---|---|
+| Model | Ultralytics YOLOv8n detection fine-tuned to 5 Categories at 640×640 |
+| Licence | **AGPL-3.0** — Ultralytics weights trained by us (`docs/adr/0006`); coursework artifact, not for redistribution |
+| Training data | Fashionpedia — annotations CC BY 4.0, photographs keep the terms of the sites they came from; 4,030 train / 1,158 val / 2,000 test photographs |
+| Measured on `test` | mAP50 **0.7081**, mAP50-95 0.5417; per Category 0.78–0.80 except Accessories 0.382 |
+| Class list | `['Tops', 'Bottoms', 'Outerwear', 'Shoes', 'Accessories']`, in output order (`detectorCategories` in `lib/logic/scan_pipeline.dart`) |
+| sha256 | `72d2ba68cc390ecae3755c13f026a12acc5743f3a84818c6781455e55dd866cb` |
+| Size | 12,767,821 bytes (12.8 MB) |
+| Input | `serving_default_args_0` — `[1, 3, 640, 640]` float32, **NCHW** RGB in `[0, 1]` |
+| Output | `serving_default_output_0_output` — `[1, 9, 8400]` float32: centre x, centre y, width, height, then five Category scores, no objectness |
+
+The `.tflite` is copied from `ml_workspace/yolo/artifacts/detector/`, where `report.md`,
+`per_category_ap.csv` and the confusion matrix sit next to it.
+

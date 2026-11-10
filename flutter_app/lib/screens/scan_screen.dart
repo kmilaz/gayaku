@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -65,6 +67,12 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Uint8List? _photo;
 
+  /// Width over height of [_photo], so a box can be drawn where its fractions land.
+  ///
+  /// `BoxFit.cover` crops, so positioning a box by container fractions alone put it in the
+  /// wrong place on any photo whose aspect differs from the card.
+  double? _photoAspect;
+
   /// One entry per garment the detector found, in the order the pipeline returned it:
   /// largest box first (`docs/multi-item-scan.md`).
   final List<_Draft> _drafts = [];
@@ -91,6 +99,20 @@ class _ScanScreenState extends State<ScanScreen> {
     return pipeline.scanAll(bytes);
   }
 
+  /// Width over height of [bytes], decoded from the header rather than the pixels.
+  static Future<double?> _aspectOf(Uint8List bytes) async {
+    try {
+      final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      final descriptor = await ui.ImageDescriptor.encoded(buffer);
+      final aspect = descriptor.width / descriptor.height;
+      descriptor.dispose();
+      buffer.dispose();
+      return aspect;
+    } on Object {
+      return null;
+    }
+  }
+
   Future<Uint8List?> _pick(ImageSource source) async {
     final injected = widget.picker;
     if (injected != null) return injected(source);
@@ -108,8 +130,11 @@ class _ScanScreenState extends State<ScanScreen> {
       final bytes = await _pick(source);
       if (bytes == null) return;
       if (!mounted) return;
+      final aspect = await _aspectOf(bytes);
+      if (!mounted) return;
       setState(() {
         _photo = bytes;
+        _photoAspect = aspect;
         for (final draft in _drafts) {
           draft.dispose();
         }
@@ -291,6 +316,7 @@ class _ScanScreenState extends State<ScanScreen> {
                     const SizedBox(height: 16),
                     _ScanCard(
                       photo: _photo,
+                      photoAspect: _photoAspect,
                       cutoutPng: draft?.result.cutoutPng,
                       box: draft?.result.box,
                       status: _status(),
@@ -484,10 +510,12 @@ class _ScanCard extends StatelessWidget {
     required this.photo,
     required this.cutoutPng,
     required this.status,
+    this.photoAspect,
     this.box,
   });
 
   final Uint8List? photo;
+  final double? photoAspect;
   final Uint8List? cutoutPng;
 
   /// The garment on screen, in fractions of [photo]. Present once the detector has run;
@@ -520,7 +548,7 @@ class _ScanCard extends StatelessWidget {
                       color: palette.accentInk,
                     ),
                   )
-                : _BoxedPhoto(photo: image, box: box),
+                : _BoxedPhoto(photo: image, aspect: photoAspect, box: box),
           ),
           if (photo != null) const CustomPaint(painter: _CornerGuides()),
           Align(
@@ -806,10 +834,13 @@ class _OptionSheet<T> extends StatelessWidget {
 /// The photo with the current garment outlined, so a multi-item scan shows which box the
 /// details below belong to.
 class _BoxedPhoto extends StatelessWidget {
-  const _BoxedPhoto({required this.photo, required this.box});
+  const _BoxedPhoto({required this.photo, required this.box, this.aspect});
 
   final Uint8List photo;
   final Rect? box;
+
+  /// Width over height of [photo]; assumes square when unknown.
+  final double? aspect;
 
   @override
   Widget build(BuildContext context) {
@@ -817,18 +848,29 @@ class _BoxedPhoto extends StatelessWidget {
     final rect = box;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final height = constraints.maxHeight;
+        final containerWidth = constraints.maxWidth;
+        final containerHeight = constraints.maxHeight;
+        final imageAspect = aspect ?? 1;
+        // Draw the whole photo, letterboxed into the card, so a box given as fractions of
+        // the photo maps onto the pixels it was measured on.
+        final scale = math.min(containerWidth / imageAspect, containerHeight);
+        final drawnWidth = imageAspect * scale;
+        final drawnHeight = scale;
+        final left = (containerWidth - drawnWidth) / 2;
+        final top = (containerHeight - drawnHeight) / 2;
         return Stack(
           fit: StackFit.expand,
           children: [
-            Image.memory(photo, fit: BoxFit.cover),
+            Positioned.fromRect(
+              rect: Rect.fromLTWH(left, top, drawnWidth, drawnHeight),
+              child: Image.memory(photo, fit: BoxFit.fill),
+            ),
             if (rect != null)
               Positioned(
-                left: rect.left * width,
-                top: rect.top * height,
-                width: rect.width * width,
-                height: rect.height * height,
+                left: left + rect.left * drawnWidth,
+                top: top + rect.top * drawnHeight,
+                width: rect.width * drawnWidth,
+                height: rect.height * drawnHeight,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     border: Border.all(color: palette.accentInk, width: 3),

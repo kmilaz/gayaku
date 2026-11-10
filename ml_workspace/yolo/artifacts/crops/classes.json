@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "dataset": "crops",
+  "source": "ml_workspace/yolo/train_local.py: yolov8n-cls.pt trained on the fashionpedia_crops.py tree (12 classes, imgsz 224, 30 epochs, batch 64, seed 42); labels in the model's output order",
+  "labels": [
+    "Celana_Panjang",
+    "Celana_Pendek",
+    "Gaun",
+    "Jaket",
+    "Kaos",
+    "Kemeja",
+    "Mantel",
+    "Rok",
+    "Rompi",
+    "Sepatu",
+    "Sweter",
+    "Topi"
+  ]
+}

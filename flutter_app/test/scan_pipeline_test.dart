@@ -175,6 +175,25 @@ void main() {
     });
   });
 
+  group('garmentMask', () {
+    test('leaves a matte that covers something untouched', () {
+      final mask = Float32List.fromList([1, 0.9, 0.1, 0]);
+      expect(garmentMask(mask), mask);
+    });
+
+    test('keeps the whole crop when the matte is empty', () {
+      // A shoe box fills its own crop, U-2-Net returns "nothing salient", and the garment used
+      // to vanish from the carousel because the colour read then had no pixels at all.
+      final mask = Float32List.fromList([0.002, 0, 0, 0]);
+      expect(garmentMask(mask), [1, 1, 1, 1]);
+    });
+
+    test('does not resurrect a matte that keeps a sliver', () {
+      final mask = Float32List.fromList([0.8, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+      expect(garmentMask(mask), mask);
+    });
+  });
+
   // A model exported by a different toolchain may arrive as NCHW or with logits
   // instead of a softmax; both are handled rather than rejected.
   group('input layout', () {

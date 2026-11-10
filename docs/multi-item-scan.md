@@ -18,7 +18,7 @@ One photo in, a list of garments out. Each stage has one job:
 | Stage | Answers | Model | Failure mode |
 | --- | --- | --- | --- |
 | Detect | Where are the garments, and which Category is each? | `yolov8n` detection, 5 Categories | No box above threshold → "no garment" |
-| Crop + matte | What pixels are the garment alone? | `u2netp_320.tflite` on the box crop | Empty matte → drop this item, keep the rest |
+| Crop + matte | What pixels are the garment alone? | `u2netp_320.tflite` on the box crop | A mask that keeps under 1 % of the crop is replaced by the whole crop (`garmentMask`), then an unreadable colour drops this item and keeps the rest |
 | Classify | Which of the 18 classes? | `garment_classifier.tflite` | Off-list index → drop this item, keep the rest |
 | Read colour | Which Dominant colour, and what is it called? | `color_extraction.dart`, on the matte | Unreadable → keep the item, leave the colour empty |
 

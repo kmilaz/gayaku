@@ -307,7 +307,7 @@ class ScanPipeline {
       bottom: box.bottom,
     ));
     final cropPng = await _encodePng(crop.rgba, crop.width, crop.height);
-    final usedMask = mask ?? await _matte(cropPng);
+    final usedMask = garmentMask(mask ?? await _matte(cropPng));
     final cutoutPng = await _encodePng(
       premultipliedCutout(
         crop.rgba,
@@ -788,6 +788,28 @@ void requireSquareRgbInput(Tensor tensor, int size, String model) {
     right: math.min(1.0, (maxX + 1) / size + margin),
     bottom: math.min(1.0, (maxY + 1) / size + margin),
   );
+}
+
+/// Smallest share of a matte that still counts as a usable cutout.
+///
+/// U-2-Net answers "nothing is salient" for a crop whose subject fills the frame: a shoe or a hat
+/// box holds almost no background to contrast against, so the mask comes back near zero. Dropping
+/// the garment there throws away a real detection that the detector scored 0.39–0.74 and the
+/// classifier named at 0.66–1.00, so a mask below this floor is replaced by the whole crop.
+const mattingCoverageFloor = 0.01;
+
+/// [mask] with an empty result replaced by "keep everything".
+///
+/// The colour read from an all-opaque mask includes background, which is why the card treats a
+/// detected colour as a suggestion (`docs/adr/0012`); the name is unaffected, because the
+/// classifier runs on the crop itself.
+Float32List garmentMask(Float32List mask) {
+  var covered = 0;
+  for (final value in mask) {
+    if (value >= 0.5) covered++;
+  }
+  if (mask.isEmpty || covered / mask.length >= mattingCoverageFloor) return mask;
+  return Float32List(mask.length)..fillRange(0, mask.length, 1);
 }
 
 /// Cuts the mask's box out of a full-resolution RGBA image.

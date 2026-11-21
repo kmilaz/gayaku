@@ -871,54 +871,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(height: 36),
 
-                        // --- TOMBOL LOG OUT ---
-                        Center(
-                          child: GestureDetector(
-                            onTap: () {
-                              showDialog(
-                                context: context,
-                                builder: (dialogContext) => AlertDialog(
-                                  title: Text(
-                                    isId
-                                        ? 'Konfirmasi Keluar'
-                                        : 'Confirm Log Out',
-                                  ),
-                                  content: Text(
-                                    isId
-                                        ? 'Apakah Anda yakin ingin keluar dari akun?'
-                                        : 'Are you sure you want to log out?',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(dialogContext),
-                                      child: Text(isId ? 'Batal' : 'Cancel'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () async {
-                                        await authService.signOut();
-                                        if (!context.mounted) return;
-                                        Navigator.pop(dialogContext);
-                                        Navigator.pushAndRemoveUntil(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                const LoginScreen(),
-                                          ),
-                                          (route) => false,
-                                        );
-                                      },
-                                      child: Text(
-                                        isId ? 'Keluar' : 'Log Out',
-                                        style: const TextStyle(
-                                          color: Colors.red,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
+// --- TOMBOL LOG OUT ---
+Center(
+  child: GestureDetector(
+    onTap: () {
+      showDialog(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: palette.sheet,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Text(
+            isId ? 'Konfirmasi Keluar' : 'Confirm Log Out',
+            style: TextStyle(
+              color: palette.ink,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            isId
+                ? 'Apakah Anda yakin ingin keluar dari akun?'
+                : 'Are you sure you want to log out?',
+            style: TextStyle(
+              color: palette.inkMuted,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                isId ? 'Batal' : 'Cancel',
+                style: TextStyle(color: palette.inkMuted),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                await authService.signOut();
+                if (!context.mounted) return;
+                Navigator.pop(dialogContext);
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const LoginScreen(),
+                  ),
+                  (route) => false,
+                );
+              },
+              child: Text(
+                isId ? 'Keluar' : 'Log Out',
+                style: const TextStyle(
+                  color: Colors.red,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
                             child: Text(
                               isId ? 'Keluar Akun' : 'Log Out',
                               style: TextStyle(

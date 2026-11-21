@@ -30,7 +30,11 @@ class AuthException implements Exception {
 abstract class AuthService {
   AuthUser? get currentUser;
 
+  Stream<AuthUser?> get onAuthStateChange;
+
   Future<AuthUser> signIn({required String email, required String password});
+
+  Future<void> signInWithGoogle();
 
   /// Returns null when the backend wants the email confirmed first, so the
   /// caller can tell the user to check their inbox instead of opening Home.
@@ -65,10 +69,18 @@ class DemoAuthService implements AuthService {
   AuthUser? get currentUser => _user;
 
   @override
+  Stream<AuthUser?> get onAuthStateChange => Stream.value(_user);
+
+  @override
   Future<AuthUser> signIn({
     required String email,
     required String password,
   }) async => _user = _userFor(email, '');
+
+  @override
+  Future<void> signInWithGoogle() async {
+    _user = _userFor('demo.google@gayaku.app', 'Demo Google User');
+  }
 
   @override
   Future<AuthUser?> signUp({
@@ -120,6 +132,13 @@ class SupabaseAuthService implements AuthService {
   }
 
   @override
+  Stream<AuthUser?> get onAuthStateChange =>
+      _client.auth.onAuthStateChange.map((data) {
+        final user = data.session?.user;
+        return user == null ? null : _fromUser(user);
+      });
+
+  @override
   Future<AuthUser> signIn({required String email, required String password}) =>
       _guard(() async {
         final res = await _client.auth.signInWithPassword(
@@ -132,6 +151,14 @@ class SupabaseAuthService implements AuthService {
         }
         return _fromUser(user);
       });
+
+  @override
+  Future<void> signInWithGoogle() => _guard(() async {
+    await _client.auth.signInWithOAuth(
+      sb.OAuthProvider.google,
+      redirectTo: 'io.supabase.gayaku://login-callback',
+    );
+  });
 
   @override
   Future<AuthUser?> signUp({
@@ -154,8 +181,12 @@ class SupabaseAuthService implements AuthService {
   Future<void> signOut() => _guard(() => _client.auth.signOut());
 
   @override
-  Future<void> requestPasswordReset(String email) =>
-      _guard(() => _client.auth.resetPasswordForEmail(email.trim()));
+  Future<void> requestPasswordReset(String email) => _guard(
+    () => _client.auth.resetPasswordForEmail(
+      email.trim(),
+      redirectTo: 'io.supabase.gayaku://login-callback',
+    ),
+  );
 
   @override
   Future<void> updatePassword(String newPassword) => _guard(() async {

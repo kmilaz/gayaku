@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'navigation.dart';
 import 'screens/login_screen.dart';
+import 'screens/update_password_screen.dart';
 import 'services/auth_service.dart';
 import 'services/outfit_service.dart';
 import 'services/wardrobe_service.dart';
@@ -21,6 +22,8 @@ import 'theme/app_theme.dart';
 /// in the same slot); RLS, not secrecy, is what protects the data.
 const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 const _supabaseKey = String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY');
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -74,6 +77,15 @@ Future<void> main() async {
 /// person saw the previous account's garments until a sync happened to succeed.
 void followAuthChanges(SupabaseClient client) {
   client.auth.onAuthStateChange.listen((state) async {
+    if (state.event == AuthChangeEvent.passwordRecovery) {
+      navigatorKey.currentState?.push(
+        MaterialPageRoute(
+          // Ganti dengan nama widget halaman ubah password di lib/screens/ kamu
+          builder: (_) => const UpdatePasswordScreen(),
+        ),
+      );
+      return;
+    }
     if (state.event == AuthChangeEvent.signedOut) {
       await closeWardrobeStore();
       return;
@@ -103,6 +115,7 @@ class GayakuApp extends StatelessWidget {
           valueListenable: globalLanguage,
           builder: (context, langCode, _) {
             return MaterialApp(
+              navigatorKey: navigatorKey,
               title: 'Gayaku',
               theme: AppTheme.light,
               darkTheme: AppTheme.dark,

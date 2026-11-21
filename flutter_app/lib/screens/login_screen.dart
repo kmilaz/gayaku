@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -20,6 +22,41 @@ class _LoginScreenState extends State<LoginScreen> {
   /// True while a sign-in request is in flight, so a double tap cannot send two.
   bool _busy = false;
 
+  StreamSubscription<AuthUser?>? _authSubscription;
+  bool _navigatedToHome = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSubscription = authService.onAuthStateChange.listen((user) {
+      if (user != null) {
+        _navigateToHome();
+      }
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (authService.currentUser != null) {
+        _navigateToHome();
+      }
+    });
+  }
+
+  void _navigateToHome() {
+    if (!mounted || _navigatedToHome) return;
+    _navigatedToHome = true;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const NavShell()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
   Future<void> _signIn() async {
     setState(() => _busy = true);
     try {
@@ -27,9 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailController.text,
         password: _passwordController.text,
       );
-      if (!mounted) return;
-      Navigator.of(context)
-          .pushReplacement(MaterialPageRoute(builder: (_) => const NavShell()));
+      _navigateToHome();
     } on AuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -39,6 +74,145 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _signInWithGoogle() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await authService.signInWithGoogle();
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Gagal membuka login Google.')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _showForgotPasswordDialog(BuildContext context, dynamic palette) async {
+    final resetEmailController = TextEditingController();
+    bool isSubmitting = false;
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: palette.sheet,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Text(
+                "Reset Password",
+                style: GoogleFonts.bricolageGrotesque(
+                  fontWeight: FontWeight.bold,
+                  color: palette.ink,
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Masukkan email akunmu. Kami akan mengirimkan tautan untuk mereset password ke email tersebut.",
+                    style: TextStyle(
+                      color: palette.inkMuted,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: resetEmailController,
+                    keyboardType: TextInputType.emailAddress,
+                    style: TextStyle(color: palette.ink),
+                    decoration: InputDecoration(
+                      hintText: 'Email',
+                      hintStyle: TextStyle(color: palette.inkMuted),
+                      prefixIcon: Icon(Icons.email_outlined, color: palette.inkMuted),
+                      filled: true,
+                      fillColor: palette.canvas.withValues(alpha: 0.5),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.of(dialogContext).pop(),
+                  child: Text("Batal", style: TextStyle(color: palette.inkMuted)),
+                ),
+                ElevatedButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          final email = resetEmailController.text.trim();
+                          if (email.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Email tidak boleh kosong.')),
+                            );
+                            return;
+                          }
+
+                          setDialogState(() => isSubmitting = true);
+
+                          try {
+                            // Memanggil fungsi reset password dari authService yang sudah kita lihat di atas
+                            await authService.requestPasswordReset(email);
+
+                            if (!dialogContext.mounted) return;
+                            Navigator.of(dialogContext).pop();
+
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Tautan reset password telah dikirim ke email.'),
+                              ),
+                            );
+                          } on AuthException catch (e) {
+                            setDialogState(() => isSubmitting = false);
+                            if (!dialogContext.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(e.message)),
+                            );
+                          } catch (e) {
+                            setDialogState(() => isSubmitting = false);
+                            if (!dialogContext.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Terjadi kesalahan. Coba lagi.')),
+                            );
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: palette.action,
+                    foregroundColor: palette.onAction,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text("Kirim"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = AppColors.of(context);
@@ -46,7 +220,7 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: palette.canvas,
       body: Stack(
         children: [
-          // 1. Header Bagian Atas (Espresso Theme)
+          // 1. Header Bagian Atas
           Container(
             // A fixed 35% header overflowed on short screens; a min height
             // lets it grow instead.
@@ -54,8 +228,7 @@ class _LoginScreenState extends State<LoginScreen> {
               minHeight: MediaQuery.sizeOf(context).height * 0.35,
             ),
             width: double.infinity,
-            // Navy ground: `palette.ink` left the cream copy on near-white.
-            color: palette.canvas,
+            color: palette.action,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -101,7 +274,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Text(
                   "Sign in to discover amazing outfits around you.",
                   style: TextStyle(
-                    color: palette.onAction.withValues(alpha: 0.7),
+                    color: palette.onAction.withValues(alpha: 0.85),
                     fontSize: 13,
                     height: 18 / 13,
                   ),
@@ -214,7 +387,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       Align(
                         alignment: Alignment.center,
                         child: TextButton(
-                          onPressed: () {},
+                          onPressed: () => _showForgotPasswordDialog(context, palette),
                           child: Text(
                             "Forgot Password?",
                             style: TextStyle(
@@ -254,18 +427,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           _buildSocialButton(
                             icon: Icons.g_mobiledata,
                             color: palette.ink,
-                            onTap: () {
-                              // Needs a Google OAuth client + redirect URL in the
-                              // Supabase dashboard; until then say so instead of
-                              // pretending the user is signed in.
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Google Sign-In is not connected yet.',
-                                  ),
-                                ),
-                              );
-                            },
+                            onTap: _busy ? () {} : _signInWithGoogle,
                           ),
                         ],
                       ),
@@ -278,9 +440,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text(
+                    Text(
                       "Don't have an account? ",
-                      style: TextStyle(fontSize: 16, height: 23 / 16),
+                      style: TextStyle(
+                        fontSize: 16,
+                        height: 23 / 16,
+                        color: palette.inkMuted,
+                      ),
                     ),
                     GestureDetector(
                       onTap: () {

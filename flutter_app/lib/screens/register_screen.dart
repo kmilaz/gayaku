@@ -66,8 +66,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               minHeight: MediaQuery.sizeOf(context).height * 0.35,
             ),
             width: double.infinity,
-            // Navy ground: `palette.ink` left the cream copy on near-white.
-            color: palette.canvas,
+            color: palette.action,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -96,7 +95,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Text(
                   "Sign up to discover amazing things near around you.",
                   style: TextStyle(
-                    color: palette.onAction.withValues(alpha: 0.7),
+                    color: palette.onAction.withValues(alpha: 0.85),
                     fontSize: 13,
                     height: 18 / 13,
                   ),
@@ -242,9 +241,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text(
+                    Text(
                       "Already have an account? ",
-                      style: TextStyle(fontSize: 16, height: 23 / 16),
+                      style: TextStyle(
+                        fontSize: 16,
+                        height: 23 / 16,
+                        color: palette.inkMuted,
+                      ),
                     ),
                     GestureDetector(
                       onTap: () => Navigator.of(context).pop(),

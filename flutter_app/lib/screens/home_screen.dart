@@ -100,8 +100,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const GreetingHeader(),
-                    const SizedBox(height: 16),
-                    _buildAiStylistCard(context, palette),
                     const SizedBox(height: 20),
                     Text(
                       "Today's Look",
@@ -114,6 +112,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 12),
                     const TodaysLookSection(),
+                    const SizedBox(height: 20),
+                    _buildAiStylistCard(context, palette),
                     const SizedBox(height: 20),
                     QuickActions(
                       onFavoriteTap: () => openNavDestination(

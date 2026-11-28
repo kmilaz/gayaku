@@ -22,6 +22,31 @@ class ChatMessage {
   final DateTime timestamp;
   final List<StylistOutfitOption> options;
   final String? generalAdvice;
+
+  Map<String, dynamic> toJson() => {
+    'is_user': isUser,
+    'text': text,
+    'timestamp': timestamp.toIso8601String(),
+    'general_advice': generalAdvice,
+    'options': options.map((o) => o.toJson()).toList(),
+  };
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    final rawOptions = json['options'] as List? ?? const [];
+    final parsedOptions = rawOptions
+        .whereType<Map>()
+        .map((e) => StylistOutfitOption.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+    return ChatMessage(
+      isUser: json['is_user'] == true,
+      text: (json['text'] ?? '').toString(),
+      timestamp:
+          DateTime.tryParse((json['timestamp'] ?? '').toString()) ??
+          DateTime.now(),
+      options: parsedOptions,
+      generalAdvice: json['general_advice']?.toString(),
+    );
+  }
 }
 
 class AiStylistChatScreen extends StatefulWidget {
@@ -37,27 +62,339 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
+  final Set<String> _savedOptionKeys = <String>{};
+  List<StylistChatSessionData> _sessions = const [];
+  late String _currentSessionId;
   bool _isThinking = false;
+
+  static const List<String> _quickPromptSuggestions = [
+    'Outfit kuliah hari ini',
+    'Wisuda teman',
+    'Semi-formal meeting',
+    'Nongkrong kasual',
+  ];
+
+  static final RegExp _uuidPattern = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
 
   @override
   void initState() {
     super.initState();
+    _currentSessionId = _newSessionId();
 
     // Friendly opening message from AI Stylist explaining free-form input
-    _messages.add(
-      ChatMessage(
-        isUser: false,
-        text: 'Halo! Aku AI Stylist pribadimu. Kamu bisa bebas menanyakan rekomendasi outfit untuk acara apa saja, preferensi warna, atau gaya tertentu (misalnya: wisuda teman, ngampus santai, meeting formal, hingga paduan warna netral). Ceritakan apa yang kamu butuhkan!',
-        timestamp: DateTime.now(),
-      ),
-    );
+    _messages.add(_buildGreetingMessage());
+    _restoreLatestSessionAndHandleInitialQuery();
+  }
 
-    // If an initial query was passed from Dashboard, submit it immediately
-    if (widget.initialQuery != null && widget.initialQuery!.trim().isNotEmpty) {
+  String _newSessionId() => 'session-${DateTime.now().microsecondsSinceEpoch}';
+
+  ChatMessage _buildGreetingMessage() => ChatMessage(
+    isUser: false,
+    text: 'Halo! Aku AI Stylist pribadimu. Kamu bisa bebas menanyakan rekomendasi outfit untuk acara apa saja, preferensi warna, atau gaya tertentu (misalnya: wisuda teman, ngampus santai, meeting formal, hingga paduan warna netral). Ceritakan apa yang kamu butuhkan!',
+    timestamp: DateTime.now(),
+  );
+
+  bool get _isEmptyNewSession =>
+      !_messages.any((m) => m.isUser) && !_isThinking;
+
+  Future<void> _restoreLatestSessionAndHandleInitialQuery() async {
+    final sessions = await aiStylistService.loadChatSessions();
+    if (!mounted) return;
+
+    final initial = widget.initialQuery?.trim();
+    if (initial != null && initial.isNotEmpty) {
+      setState(() {
+        _sessions = sessions;
+      });
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _handleSend(widget.initialQuery!.trim());
+        if (mounted) _handleSend(initial);
+      });
+      return;
+    }
+
+    if (sessions.isNotEmpty) {
+      final latest = sessions.first;
+      final restored = latest.messages.map(ChatMessage.fromJson).toList();
+      if (restored.isNotEmpty) {
+        setState(() {
+          _sessions = sessions;
+          _currentSessionId = latest.id;
+          _messages
+            ..clear()
+            ..addAll(restored);
+        });
+        _scrollToBottom();
+      }
+    }
+  }
+
+  Future<void> _persistHistory() async {
+    await aiStylistService.upsertChatSession(
+      sessionId: _currentSessionId,
+      messages: _messages.map((m) => m.toJson()).toList(),
+    );
+    final updated = await aiStylistService.loadChatSessions();
+    if (mounted) {
+      setState(() {
+        _sessions = updated;
       });
     }
+  }
+
+  void _startNewChat() {
+    setState(() {
+      _currentSessionId = _newSessionId();
+      _messages
+        ..clear()
+        ..add(_buildGreetingMessage());
+      _savedOptionKeys.clear();
+      _isThinking = false;
+    });
+  }
+
+  void _openSession(StylistChatSessionData session) {
+    final restored = session.messages.map(ChatMessage.fromJson).toList();
+    setState(() {
+      _currentSessionId = session.id;
+      _messages
+        ..clear()
+        ..addAll(restored.isEmpty ? [_buildGreetingMessage()] : restored);
+      _savedOptionKeys.clear();
+      _isThinking = false;
+    });
+    _scrollToBottom();
+  }
+
+  String _formatIndonesianDateTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(dateTime.year, dateTime.month, dateTime.day);
+    final diffDays = today.difference(target).inDays;
+
+    final hh = dateTime.hour.toString().padLeft(2, '0');
+    final mm = dateTime.minute.toString().padLeft(2, '0');
+    final timePart = '$hh:$mm';
+
+    if (diffDays == 0) return 'Hari ini • $timePart';
+    if (diffDays == 1) return 'Kemarin • $timePart';
+
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agu',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
+    ];
+    final monthName = months[dateTime.month - 1];
+    return '${dateTime.day} $monthName ${dateTime.year} • $timePart';
+  }
+
+  Future<void> _showHistoryBottomSheet() async {
+    final loaded = await aiStylistService.loadChatSessions();
+    if (!mounted) return;
+    setState(() {
+      _sessions = loaded;
+    });
+
+    final palette = AppColors.of(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: palette.sheet,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.7,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 10),
+                    Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: palette.surfaceMuted,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 16, 10),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.history_rounded,
+                            color: palette.action,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Riwayat Obrolan',
+                              style: GoogleFonts.bricolageGrotesque(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                                color: palette.ink,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${_sessions.length} sesi',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: palette.inkMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Divider(height: 1, color: palette.surfaceMuted),
+                    if (_sessions.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 32,
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.chat_bubble_outline_rounded,
+                              size: 36,
+                              color: palette.inkMuted,
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'Belum ada riwayat obrolan tersimpan.',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                color: palette.inkMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                          itemCount: _sessions.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          itemBuilder: (context, idx) {
+                            final session = _sessions[idx];
+                            final isActive = session.id == _currentSessionId;
+                            return Material(
+                              color: isActive
+                                  ? palette.action.withValues(alpha: 0.12)
+                                  : palette.canvas,
+                              borderRadius: BorderRadius.circular(14),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () {
+                                  Navigator.of(sheetContext).pop();
+                                  _openSession(session);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    14,
+                                    10,
+                                    6,
+                                    10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: isActive
+                                          ? palette.action.withValues(
+                                              alpha: 0.4,
+                                            )
+                                          : palette.surfaceMuted,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              session.title,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 13.5,
+                                                fontWeight: FontWeight.w600,
+                                                color: palette.ink,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 3),
+                                            Text(
+                                              _formatIndonesianDateTime(
+                                                session.updatedAt,
+                                              ),
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                color: palette.inkMuted,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 20,
+                                          color: palette.inkMuted,
+                                        ),
+                                        tooltip: 'Hapus Sesi',
+                                        onPressed: () async {
+                                          await aiStylistService
+                                              .deleteChatSession(session.id);
+                                          final refreshed =
+                                              await aiStylistService
+                                                  .loadChatSessions();
+                                          if (!mounted) return;
+                                          setState(() {
+                                            _sessions = refreshed;
+                                          });
+                                          setSheetState(() {});
+                                          if (session.id == _currentSessionId) {
+                                            _startNewChat();
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -92,10 +429,25 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
       _isThinking = true;
     });
     _scrollToBottom();
+    _persistHistory();
+
+    // Build recent chat history (last 6 messages before the current prompt)
+    final priorMessages = _messages.length > 1
+        ? _messages.sublist(1, _messages.length - 1)
+        : const <ChatMessage>[];
+    final recentTurns =
+        (priorMessages.length > 6
+                ? priorMessages.sublist(priorMessages.length - 6)
+                : priorMessages)
+            .map((m) => StylistChatTurn(isUser: m.isUser, text: m.text))
+            .toList();
 
     // Process through AiStylistService
     try {
-      final response = await aiStylistService.recommend(query: cleanQuery);
+      final response = await aiStylistService.recommend(
+        query: cleanQuery,
+        history: recentTurns,
+      );
 
       if (!mounted) return;
 
@@ -112,6 +464,7 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
         _isThinking = false;
       });
       _scrollToBottom();
+      await _persistHistory();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -125,6 +478,7 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
         _isThinking = false;
       });
       _scrollToBottom();
+      await _persistHistory();
     }
   }
 
@@ -132,16 +486,32 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
     BuildContext context,
     StylistOutfitOption option,
   ) async {
+    final optionKey = _optionKey(option);
+    if (_savedOptionKeys.contains(optionKey)) return;
+
     try {
+      final safeName = option.title.trim().length > 80
+          ? option.title.trim().substring(0, 80)
+          : option.title.trim();
+      final validUuidIds = option.items
+          .map((i) => i.id)
+          .where((id) => _uuidPattern.hasMatch(id))
+          .toList();
+
       final outfit = SavedOutfit(
         id: newOutfitId(),
-        name: option.title,
-        itemIds: option.items.map((i) => i.id).toList(),
-        threshold: option.matchScore / 100.0,
+        name: safeName.isEmpty ? 'Rekomendasi AI Stylist' : safeName,
+        itemIds: validUuidIds,
+        threshold: (option.matchScore / 100.0).clamp(0.0, 1.0),
         favorite: true,
       );
       await saveOutfit(outfit);
 
+      if (mounted) {
+        setState(() {
+          _savedOptionKeys.add(optionKey);
+        });
+      }
       if (context.mounted) {
         showSuccessSnackBar(context, 'Kombinasi tersimpan di Favorit');
       }
@@ -156,6 +526,18 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
       }
     }
   }
+
+  String _optionKey(StylistOutfitOption option) =>
+      '${option.source.name}:${option.title}:${option.items.map((i) => i.id).join(',')}';
+
+  IconData _iconForCategory(String category) => switch (category) {
+    'Tops' => Icons.checkroom_outlined,
+    'Bottoms' => Icons.accessibility_new_outlined,
+    'Outerwear' => Icons.dry_cleaning_outlined,
+    'Shoes' || 'Footwear' => Icons.hiking_outlined,
+    'Accessories' => Icons.watch_outlined,
+    _ => Icons.checkroom_outlined,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -217,6 +599,18 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.history_rounded, color: palette.ink),
+            tooltip: 'Riwayat Obrolan',
+            onPressed: _showHistoryBottomSheet,
+          ),
+          IconButton(
+            icon: Icon(Icons.add_comment_outlined, color: palette.ink),
+            tooltip: 'Obrolan Baru',
+            onPressed: _startNewChat,
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(
@@ -238,6 +632,42 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
                 },
               ),
             ),
+
+            // Quick Prompt Chips when starting a fresh empty session
+            if (_isEmptyNewSession)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _quickPromptSuggestions.map((prompt) {
+                    return ActionChip(
+                      avatar: Icon(
+                        Icons.auto_awesome,
+                        size: 14,
+                        color: palette.action,
+                      ),
+                      label: Text(
+                        prompt,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: palette.ink,
+                        ),
+                      ),
+                      backgroundColor: palette.sheet,
+                      side: BorderSide(
+                        color: palette.action.withValues(alpha: 0.3),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      onPressed: () => _handleSend(prompt),
+                    );
+                  }).toList(),
+                ),
+              ),
 
             // Message Input Bar
             Container(
@@ -499,6 +929,14 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
     AppPalette palette,
     StylistOutfitOption option,
   ) {
+    final isSaved = _savedOptionKeys.contains(_optionKey(option));
+    final isWardrobeSource =
+        option.source == StylistRecommendationSource.wardrobe;
+    final sourceBg = isWardrobeSource
+        ? palette.action.withValues(alpha: 0.1)
+        : palette.accent.withValues(alpha: 0.14);
+    final sourceFg = isWardrobeSource ? palette.action : palette.accentInk;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -520,20 +958,33 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header: Title & Match Score Badge
+          // Source label & Match Score Badge
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Text(
-                  option.title,
-                  style: GoogleFonts.bricolageGrotesque(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: palette.ink,
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: sourceBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    option.sourceLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: sourceFg,
+                    ),
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -563,6 +1014,17 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+
+          // Option Title
+          Text(
+            option.title,
+            style: GoogleFonts.bricolageGrotesque(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: palette.ink,
+            ),
+          ),
           const SizedBox(height: 10),
 
           // Garment Thumbnails Row
@@ -575,11 +1037,14 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
               itemBuilder: (context, idx) {
                 final item = option.items[idx];
                 return GestureDetector(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => WardrobeItemDetailScreen(item: item),
-                    ),
-                  ),
+                  onTap: isWardrobeSource
+                      ? () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                WardrobeItemDetailScreen(item: item),
+                          ),
+                        )
+                      : null,
                   child: Container(
                     width: 76,
                     decoration: BoxDecoration(
@@ -597,7 +1062,7 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
                               width: double.infinity,
                               child: PlaceholderImage(
                                 imagePath: item.imagePath,
-                                icon: Icons.checkroom_outlined,
+                                icon: _iconForCategory(item.category),
                               ),
                             ),
                           ),
@@ -671,12 +1136,12 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
             height: 38,
             child: OutlinedButton.icon(
               icon: Icon(
-                Icons.favorite_border,
+                isSaved ? Icons.favorite : Icons.favorite_border,
                 size: 16,
                 color: palette.action,
               ),
               label: Text(
-                'Simpan ke Favorit',
+                isSaved ? 'Tersimpan di Favorit' : 'Simpan ke Favorit',
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
@@ -689,7 +1154,9 @@ class _AiStylistChatScreenState extends State<AiStylistChatScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: () => _saveOptionToFavorites(context, option),
+              onPressed: isSaved
+                  ? null
+                  : () => _saveOptionToFavorites(context, option),
             ),
           ),
         ],
